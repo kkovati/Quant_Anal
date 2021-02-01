@@ -3,11 +3,25 @@ import requests
 
 
 def query_history():
+    """
+    Queries all available close price of a single symbol
+    Symbols read fro
 
-    with open('iex_cloud_connector\iex_cloud_api_token.txt', 'r') as file:
+    Raises
+    ------
+    Exception
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    with open('data_mining\iex_cloud_api_token.txt', 'r') as file:
         token = file.read()
     
-    stocks = pd.read_csv('iex_cloud_connector\sp_10_stocks.csv')
+    stocks = pd.read_csv('data_mining\sp_10_stocks.csv')
     symbols_list = stocks['Symbol'].tolist()  
     
     df = pd.DataFrame(columns = symbols_list)
@@ -31,7 +45,7 @@ def query_history():
     
     #print(df)    
     
-    df.to_csv(path_or_buf='iex_cloud_connector\temp.csv')
+    df.to_csv(path_or_buf='data_mining\temp.csv')
 
 
 if __name__ == '__main__':

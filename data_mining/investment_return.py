@@ -9,18 +9,19 @@ def investment_return(prices, pre, post, sl):
     prices : pandas.Series
         DESCRIPTION.
     pre : int
-        No. of days of the input interval for the prediction
+        No. of days of the input interval for the prediction including 
+        prediction day
     post : int
         No. of days 
     sl : int
-        Stop loss ratio
+        Stop loss ratio, 0% < sl < 100%
     Returns
     -------
     None.
 
     """
-    # prices : pd.Series
     assert len(prices) == pre + post
+    assert 0 < sl < 1
     
     buy_price = last_price = prices.iloc[pre - 1]
     curr_sl_price = buy_price * (1 - sl)
