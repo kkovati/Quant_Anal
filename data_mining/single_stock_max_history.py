@@ -17,9 +17,6 @@ def query_history():
     None.
 
     """
-
-    with open('data_mining\iex_cloud_api_token.txt', 'r') as file:
-        token = file.read()
     
     stocks = pd.read_csv('data_mining\sp_10_stocks.csv')
     symbols_list = stocks['Symbol'].tolist()  

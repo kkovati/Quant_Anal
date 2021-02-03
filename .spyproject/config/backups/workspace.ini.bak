@@ -6,5 +6,5 @@ save_non_project_files = False
 
 [main]
 version = 0.2.0
-recent_files = ['plot\\prediction_plotter.py', 'data_mining\\iex_cloud_single_stock_max.py', 'data_mining\\sandbox.py']
+recent_files = ['data_visualisation\\prediction_plotter.py']
 
