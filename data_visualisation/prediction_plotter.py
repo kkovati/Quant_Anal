@@ -36,6 +36,6 @@ def plot_df(df):
 
 if __name__ == '__main__':
     # Test 1
-    df = pd.read_csv("test_data/AAPL_2014_test.csv").set_index("Date")
+    df = pd.read_csv("../test/test_data/AAPL_2014_test.csv").set_index("Date")
 
     plot_df(df)
