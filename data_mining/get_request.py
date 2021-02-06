@@ -12,7 +12,7 @@ def get_request(url):
 
 
 if __name__ == "__main__":
-
+    "Tests"
     json = get_request("http://echo.jsontest.com/key/value/one/two")
 
     assert json['key'] == 'value'
