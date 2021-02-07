@@ -28,6 +28,7 @@ if __name__ == '__main__':
     # Test 1
     df = pd.read_csv("../test/test_data/AAPL_BBPL_CCPL_240.csv").set_index("Date")
     print(sample(df, interval_length=10))
+    print('Test1 OK')
 
     # Test 2
     try:
