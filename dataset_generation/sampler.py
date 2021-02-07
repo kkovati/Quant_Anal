@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 
 
-def sample(df, interval_length):
+def sample(dataframe, interval_length):
     max_sampling = 100
 
     for _ in range(max_sampling):
-        column = np.random.choice(df.columns)
-        start = np.random.randint(len(df.index))
-        interval = df[column].iloc[start: start + interval_length]
+        column = np.random.choice(dataframe.columns)
+        start = np.random.randint(len(dataframe.index))
+        interval = dataframe[column].iloc[start: start + interval_length]
 
         if len(interval) != interval_length:
             continue
