@@ -14,6 +14,8 @@ def sample_interval(dataframe, interval_length):
     -------
     interval_series : pd.Series
     """
+    assert type(dataframe) is pd.core.frame.DataFrame
+
     max_sampling = 100
 
     for _ in range(max_sampling):

@@ -21,6 +21,7 @@ def calc_profit(buy_price, post_series, stop_loss):
     -------
     None.
     """
+    assert type(post_series) is pd.core.series.Series
     assert 0 < buy_price
     assert 0 < stop_loss < 100
 
