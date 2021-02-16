@@ -39,7 +39,7 @@ def calc_profit(buy_price, post_series, stop_loss):
 
 if __name__ == '__main__':
     # Test 1
-    df = pd.read_csv("../test/test_data/AAPL_240.csv").set_index("Date")
+    df = pd.read_csv("../data/test_data/AAPL_240.csv").set_index("Date")
 
     interval_series = df['AAPL'].iloc[:20]  # Output of sampler.sample_interval()
     buy_p = interval_series.iloc[9]

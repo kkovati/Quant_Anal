@@ -30,7 +30,7 @@ class RandomSampledDataset(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     # Test 1
-    rsds = RandomSampledDataset("../test/test_data/AAPL_BBPL_CCPL_240.csv",
+    rsds = RandomSampledDataset("../data/test_data/AAPL_BBPL_CCPL_240.csv",
                                 pre=3,
                                 post=2,
                                 stop_loss=90)

@@ -39,7 +39,7 @@ def sample_interval(dataframe, interval_length):
 
 if __name__ == '__main__':
     # Test 1
-    df = pd.read_csv("../test/test_data/AAPL_BBPL_CCPL_240.csv").set_index("Date")
+    df = pd.read_csv("../data/test_data/AAPL_BBPL_CCPL_240.csv").set_index("Date")
     print(sample_interval(df, interval_length=10))
     print('Test1 OK')
 

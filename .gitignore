@@ -126,3 +126,6 @@ dmypy.json
 
 # linguist detection
 *.html linguist-detectable=false
+
+# Kaggle data
+data/Huge_Stock_Market_Dataset/
