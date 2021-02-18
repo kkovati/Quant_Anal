@@ -1,7 +1,7 @@
 import pandas as pd
 import torch
 
-import sampler
+import database_connection as dc
 import labler
 
 
@@ -11,17 +11,17 @@ import labler
 class RandomSampledDataset(torch.utils.data.Dataset):
 
     def __init__(self, csv_file, pre, post, stop_loss):
-        self.dataframe = pd.read_csv(csv_file).set_index("Date")
+        self.dataset = dc.HSMDataset()
         self.pre = pre
         self.post = post
         self.stop_loss = stop_loss
 
     def __getitem__(self, _):
-        sampled_df = sampler.sample_interval(self.dataframe, self.pre + self.post)
-        pre_df = sampled_df[0:self.pre]
-        post_df = sampled_df[self.pre:]
+        sampled_interval = self.dataset.sample_interval(self.pre + self.post)
+        pre_df = sampled_interval[0:self.pre]
+        post_df = sampled_interval[self.pre:]
 
-        return labler.calc_profit(post_df)
+        y = labler.calc_profit(post_df)
 
     def __len__(self):
         # TODO decide virtual length of dataset
