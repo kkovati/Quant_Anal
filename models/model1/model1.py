@@ -1,9 +1,12 @@
-import indicators.moving_averages_for_dataframes as mavg
+import pandas as pd
+
+import indicators.moving_averages as mavg
 
 
 
-def compile_input(dataframe):
-    pass
+def compile_input(series):
+    assert type(series) is pd.Series
+
 
 
 if __name__ == '__main__':
