@@ -2,6 +2,7 @@ import datetime
 import os
 import numpy as np
 import pandas as pd
+import random
 
 
 class HSMDataset:
@@ -10,39 +11,46 @@ class HSMDataset:
         self.path = '../data/Huge_Stock_Market_Dataset/ETFs+Stocks'
         self.files = [f for f in os.listdir(self.path)]
 
-        for f in self.files:
-            if f[-7:] != '.us.txt':
-                raise Exception(f'Filename problem: ' + f)
+        # TODO - debug
+        self.files = self.files[:210]
 
-    def sample_file(self):
-        return np.random.choice(self.files)
+        self.dataframes = [None] * len(self.files)
+
+        for i, f in enumerate(self.files):
+            if i % 200 == 199:
+                print(f'{i + 1}/{len(self.files)} files loaded')
+            # self.dataframes.append(self.open_file(f))
+            self.dataframes[i] = self.open_file(f)
 
     def open_file(self, filename):
-        p = self.path + '/' + filename
-        return pd.read_csv(p).set_index("Date")
+        path = self.path + '/' + filename
+        dataframe = pd.read_csv(path).set_index("Date")
+        dataframe.symbol = filename[:filename.index('.')]
+        return dataframe
 
-    def sample_interval(self, interval_length):
+    def sample_dataframe(self):
+        return random.choice(self.dataframes)
 
+    def sample_interval_series(self, interval_length):
+        # TODO rename
         max_sampling = 50
         for _ in range(max_sampling):
 
-            filename = self.sample_file()
-            print(filename)
-            dataframe = self.open_file(filename)
+            dataframe = self.sample_dataframe()
 
             start = np.random.randint(len(dataframe.index))
             interval_series = dataframe['Close'].iloc[start: start + interval_length]
 
             if len(interval_series) != interval_length:
-                print('Sampling problem in file', filename, 'at line', str(start), 'Too short interval')
+                print('Sampling problem in file', dataframe.symbol, 'at line', str(start), 'Too short interval')
                 continue
 
             if interval_series.isnull().values.any():
-                print('Sampling problem in file', filename, 'at line', str(start), 'Null value')
+                print('Sampling problem in file', dataframe.symbol, 'at line', str(start), 'Null value')
                 continue
 
             if (interval_series <= 0).any():
-                print('Sampling problem in file', filename, 'at line', str(start), 'Zero value')
+                print('Sampling problem in file', dataframe.symbol, 'at line', str(start), 'Zero value')
                 continue
 
             flag = False
@@ -52,7 +60,7 @@ class HSMDataset:
                 day1 = datetime.date(int(day1[0:4]), int(day1[5:7]), int(day1[8:10]))
                 day2 = datetime.date(int(day2[0:4]), int(day2[5:7]), int(day2[8:10]))
                 if (day2 - day1).days > 7:
-                    print('Sampling problem in file', filename, 'at line', str(start), str((day2 - day1).days),
+                    print('Sampling problem in file', dataframe.symbol, 'at line', str(start), str((day2 - day1).days),
                           'days long break in the interval')
                     flag = True
                     break
@@ -69,4 +77,4 @@ if __name__ == '__main__':
 
     # Test 1
     while True:
-        print(ds.sample_interval(interval_length=10))
+        print(ds.sample_interval_series(interval_length=10))

@@ -1,4 +1,4 @@
-import indicators.moving_averages as mavg
+import indicators.moving_averages_for_dataframes as mavg
 
 
 
