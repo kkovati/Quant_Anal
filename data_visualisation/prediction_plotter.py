@@ -9,8 +9,9 @@ import plotly.graph_objects as go
 
 def plot_df(dataframe):
     # Dataframe must have 3 columns: Price, Buy markers, Predictions
+    assert type(dataframe) is pd.DataFrame
     assert len(dataframe.columns) == 3
-    symbol = dataframe.columns[0]
+    symbol = dataframe.columns[0]  # TODO - sure?
 
     prices = go.Scatter(x=dataframe.index, y=dataframe[symbol], name='Price')
 
