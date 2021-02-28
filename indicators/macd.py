@@ -61,5 +61,4 @@ if __name__ == '__main__':
     df = extra_macd(series=ser, ema_spans=es, diff_spans=ds)
 
     import plotly.express as px
-
     fig = px.scatter(df).update_traces(mode='lines+markers').update_layout(title='Test1', hovermode="x unified").show()

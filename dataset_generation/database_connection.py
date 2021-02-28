@@ -7,12 +7,14 @@ import random
 
 class HSMDataset:
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.path = '../data/Huge_Stock_Market_Dataset/ETFs+Stocks'
         self.files = [f for f in os.listdir(self.path)]
 
-        # TODO - debug
-        self.files = self.files[:210]
+        if debug:
+            self.files = self.files[:20]
+        else:
+            self.files = self.files
 
         self.dataframes = [None] * len(self.files)
 
@@ -73,7 +75,7 @@ class HSMDataset:
 
 
 if __name__ == '__main__':
-    ds = HSMDataset()
+    ds = HSMDataset(debug=True)
 
     # Test 1
     while True:
