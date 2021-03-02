@@ -4,7 +4,16 @@ import pandas as pd
 from database_connection import HSMDataset
 
 
-def standardize(dataframe):
+def standardize(interval):
+    if type(interval) is pd.DataFrame:
+        return standardize_ohcl_dataframe(interval)
+    elif type(interval) is pd.Series:
+        return standardize_series(interval)
+    else:
+        raise Exception('Wrong input type')
+
+
+def standardize_ohcl_dataframe(dataframe):
     assert type(dataframe) is pd.DataFrame
     assert len(dataframe.columns) == 4
 
@@ -21,17 +30,37 @@ def standardize(dataframe):
     return dataframe
 
 
+def standardize_series(series):
+    assert type(series) is pd.Series
+
+    series -= np.mean(series)
+    series /= np.std(series)
+
+    return series
+
+
 if __name__ == '__main__':
+    import plotly.express as px
+
     ds = HSMDataset(debug=True)
     df = ds.open_file('ge.us.txt')
     df = df[['Open', 'High', 'Low', 'Close']]
     df = df.iloc[14000:14050]
 
-    import plotly.express as px
+    fig = px.scatter(df).update_traces(mode='lines+markers').update_layout(title='Dataframe normal',
+                                                                           hovermode="x unified").show()
 
-    fig = px.scatter(df).update_traces(mode='lines+markers').update_layout(title='Test1', hovermode="x unified").show()
+    df_st = standardize(df.copy())
 
-    df_st = standardize(df)
-
-    fig = px.scatter(df_st).update_traces(mode='lines+markers').update_layout(title='Test1',
+    fig = px.scatter(df_st).update_traces(mode='lines+markers').update_layout(title='Dataframe standardize',
                                                                               hovermode="x unified").show()
+
+    ser = df['Close']
+
+    fig = px.scatter(ser).update_traces(mode='lines+markers').update_layout(title='Series normal',
+                                                                            hovermode="x unified").show()
+
+    ser_st = standardize(ser.copy())
+
+    fig = px.scatter(ser_st).update_traces(mode='lines+markers').update_layout(title='Series standardize',
+                                                                               hovermode="x unified").show()

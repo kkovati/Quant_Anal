@@ -1,7 +1,8 @@
+import numpy as np
 import pandas as pd
 
 
-def calc_profit(buy_price, post_series, stop_loss):
+def calc_profit(buy_price, post, stop_loss):
     """
     Calculates the investment return ratio of ...
     Parameters
@@ -21,14 +22,16 @@ def calc_profit(buy_price, post_series, stop_loss):
     -------
     None.
     """
-    assert type(post_series) is pd.core.series.Series
+    assert type(post) is np.ndarray
+    assert post.ndim == 1
+    assert len(post) > 1
     assert 0 < buy_price
     assert 0 < stop_loss < 100
 
     curr_sl_price = buy_price * stop_loss / 100
     delta_price = buy_price - curr_sl_price
 
-    for price in post_series:
+    for price in post:
         if price <= curr_sl_price:
             return curr_sl_price, curr_sl_price / buy_price
         curr_sl_price = max(curr_sl_price, price - delta_price)
@@ -43,9 +46,9 @@ if __name__ == '__main__':
 
     interval_series = df['AAPL'].iloc[:20]  # Output of sampler.sample_interval()
     buy_p = interval_series.iloc[9]
-    post_ser = interval_series[10:20]
+    post_interval = interval_series[10:20].to_numpy()
 
-    sell_price, inv_ret = calc_profit(buy_price=buy_p, post_series=post_ser, stop_loss=95)
+    sell_price, inv_ret = calc_profit(buy_price=buy_p, post=post_interval, stop_loss=95)
     assert sell_price == 73.473342964
     assert inv_ret == 0.9524080627080262
     print("Test1 OK")

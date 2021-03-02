@@ -12,7 +12,7 @@ from dataset_generation.database_connection import HSMDataset
 if __name__ == '__main__':
     ds = HSMDataset(debug=True)
 
-    series = ds.sample_interval_series(interval_length=100)
+    series = ds.sample_interval_series(interval_len=100)
 
     peaks, _ = find_peaks(series)
 

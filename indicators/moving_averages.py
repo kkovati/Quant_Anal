@@ -29,10 +29,37 @@ def weighted_mov_avg(series, window):
     return wma
 
 
-def exp_mov_avg(series, span):
+def exp_mov_avg(input, span):
+    if type(input) is pd.Series:
+        return exp_mov_avg_series(input, span)
+    if type(input) is np.ndarray:
+        return exp_mov_avg_ndarray(input, span)
+    else:
+        raise Exception('Wrong input type')
+
+
+def exp_mov_avg_series(series, span):
     assert type(series) is pd.Series
     ema = series.ewm(span=span).mean()
-    ema.name = series.name + f'_EMA{span}'
+    ema.name = f'EMA{span}({series.name})'
+    return ema
+
+
+def exp_mov_avg_ndarray(array, span):
+    assert type(array) is np.ndarray
+    assert array.ndim == 1
+    assert len(array) > span * 1.5
+
+    smoothing = 2
+    q = smoothing / (1 + span)
+    ema = np.zeros((len(array),))
+    ema[0] = ema_yesterday = array[0]
+
+    for i, value_today in enumerate(array[1:]):
+        ema_today = value_today * q + ema_yesterday * (1 - q)
+        ema[i + 1] = ema_today
+        ema_yesterday = ema_today
+
     return ema
 
 
@@ -95,3 +122,12 @@ if __name__ == '__main__':
     sl = [2, 4, 6, 8, 10, 12, 16, 20, 25, 30, 35, 40]
     add_multi_exp_mov_avg(df, df.columns[0], sl)
     fig = px.scatter(df).update_traces(mode='lines+markers').update_layout(title='Test3', hovermode="x unified").show()
+
+    # Test 4
+    df = pd.read_csv("../data/test_data/AAPL_240.csv").set_index("Date")
+    ser = df[df.columns[0]]
+    ema_30_series = exp_mov_avg(ser, 30)
+    arr = ser.to_numpy()
+    ema_30_ndarray = exp_mov_avg(arr, 30)
+    fig = px.scatter(y=[ser, ema_30_series, ema_30_ndarray]).update_traces(mode='lines+markers').update_layout(title='Test4', hovermode="x unified").show()
+    # FIXME - the two calculation methods differs
