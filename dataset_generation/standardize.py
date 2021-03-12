@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from database_connection import HSMDataset
+from dataset_generation.database_connection import HSMDataset
 
 
 def standardize(interval):
@@ -9,6 +9,8 @@ def standardize(interval):
         return standardize_ohcl_dataframe(interval)
     elif type(interval) is pd.Series:
         return standardize_series(interval)
+    elif type(interval) is np.ndarray:
+        return standardize_ndarray(interval)
     else:
         raise Exception('Wrong input type')
 
@@ -37,6 +39,15 @@ def standardize_series(series):
     series /= np.std(series)
 
     return series
+
+
+def standardize_ndarray(array):
+    assert type(array) is np.ndarray
+
+    array -= np.mean(array)
+    array /= np.std(array)
+
+    return array
 
 
 if __name__ == '__main__':

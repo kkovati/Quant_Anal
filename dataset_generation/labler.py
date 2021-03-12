@@ -44,7 +44,7 @@ if __name__ == '__main__':
     # Test 1
     df = pd.read_csv("../data/test_data/AAPL_240.csv").set_index("Date")
 
-    interval_series = df['AAPL'].iloc[:20]  # Output of sampler.sample_interval()
+    interval_series = df['AAPL'].iloc[:20]  # Output of sampler.sample_random_interval()
     buy_p = interval_series.iloc[9]
     post_interval = interval_series[10:20].to_numpy()
 

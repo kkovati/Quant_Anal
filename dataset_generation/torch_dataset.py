@@ -17,7 +17,7 @@ class RandomSampledDataset(torch.utils.data.Dataset):
         self.stop_loss = stop_loss
 
     def __getitem__(self, _):
-        sampled_interval = self.dataset.sample_interval(self.pre + self.post)
+        sampled_interval = self.dataset.sample_random_interval(self.pre + self.post)
         pre_df = sampled_interval[0:self.pre]
         post_df = sampled_interval[self.pre:]
 

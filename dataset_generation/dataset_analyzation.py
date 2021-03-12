@@ -13,7 +13,7 @@ def profit_distribution(dataframe, post, stop_loss, levels, n_sample=1000, plot=
     classes = np.zeros(len(levels) + 1, dtype=int)
 
     for _ in range(n_sample):
-        interval_series = sampler.sample_interval(dataframe, interval_length=post + 1)
+        interval_series = sampler.sample_random_interval(dataframe, interval_length=post + 1)
         buy_p = interval_series[0]
         post_series = interval_series[1:]
         sell_price, profit = labler.calc_profit(buy_price=buy_p, post_series=post_series, stop_loss=stop_loss)
