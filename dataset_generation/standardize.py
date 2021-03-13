@@ -58,20 +58,35 @@ if __name__ == '__main__':
     df = df[['Open', 'High', 'Low', 'Close']]
     df = df.iloc[14000:14050]
 
+    # Plot dataframe
     fig = px.scatter(df).update_traces(mode='lines+markers').update_layout(title='Dataframe normal',
                                                                            hovermode="x unified").show()
 
+    # Plot standardized dataframe
     df_st = standardize(df.copy())
-
     fig = px.scatter(df_st).update_traces(mode='lines+markers').update_layout(title='Dataframe standardize',
                                                                               hovermode="x unified").show()
 
+    # Plot series
     ser = df['Close']
-
     fig = px.scatter(ser).update_traces(mode='lines+markers').update_layout(title='Series normal',
                                                                             hovermode="x unified").show()
 
+    # Plot standardized series
     ser_st = standardize(ser.copy())
-
     fig = px.scatter(ser_st).update_traces(mode='lines+markers').update_layout(title='Series standardize',
                                                                                hovermode="x unified").show()
+
+    # Plot ndarray
+    nda = np.zeros((4, 50))
+    nda[0] = df['Open']
+    nda[1] = df['High']
+    nda[2] = df['Low']
+    nda[3] = df['Close']
+    fig = px.scatter(np.transpose(nda)).update_traces(mode='lines+markers').update_layout(title='Ndarray normal',
+                                                                                          hovermode="x unified").show()
+
+    # Plot standardized ndarray
+    nda_st = standardize(nda.copy())
+    fig = px.scatter(np.transpose(nda_st)).update_traces(mode='lines+markers')
+    fig.update_layout(title='Ndarray normal', hovermode="x unified").show()
