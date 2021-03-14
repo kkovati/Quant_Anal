@@ -3,24 +3,24 @@ import os
 import numpy as np
 import pandas as pd
 import random
+from tqdm import tqdm
 
 
 class HSMDataset:
 
     def __init__(self, debug=False):
-        self.path = 'D:\Kovacs_Attila/08_Programming\Python_projects\Quant_Anal\data\Huge_Stock_Market_Dataset\ETFs+Stocks'
+        self.path = 'D:\Kovacs_Attila/08_Programming\Python_projects\Quant_Anal\data\Huge_Stock_Market_Dataset\Stocks'
         self.files = [f for f in os.listdir(self.path)]
 
         if debug:
-            self.files = self.files[:20]
+            self.files = self.files[:200]
         else:
             self.files = self.files
 
         self.dataframes = [None] * len(self.files)
 
-        for i, f in enumerate(self.files):
-            if i % 200 == 199:
-                print(f'{i + 1}/{len(self.files)} files loaded')
+        print('Loading files')
+        for i, f in enumerate(tqdm(self.files)):
             self.dataframes[i] = self.open_file(f)
 
     def open_file(self, filename):
@@ -91,39 +91,40 @@ class HSMDataset:
         assert post_len > 0
         assert return_type in ('df', 'np')
 
-        interval = self.sample_random_interval(interval_len=(pre_len + post_len))
-        symbol = interval.symbol
+        full_interval = self.sample_random_interval(interval_len=(pre_len + post_len))
+        symbol = full_interval.symbol
 
         if return_type == 'df':
-            datapoint = interval.iloc[:pre_len]
-            datapoint.symbol = symbol
+            # TODO - need to filter columns?
+            pre_interval = full_interval.iloc[:pre_len]
+            pre_interval.symbol = symbol
 
-            label = interval.iloc[pre_len:pre_len + post_len]
+            post_interval = full_interval.iloc[pre_len:pre_len + post_len]
 
-            return datapoint, label
+            return pre_interval, post_interval
 
         elif return_type == 'np':
-            datapoint = np.zeros((4, pre_len))
-            label = np.zeros((4, post_len))
+            pre_interval = np.zeros((4, pre_len))
+            post_interval = np.zeros((4, post_len))
 
-            datapoint[0] = interval['Open'].iloc[:pre_len]
-            datapoint[1] = interval['High'].iloc[:pre_len]
-            datapoint[2] = interval['Low'].iloc[:pre_len]
-            datapoint[3] = interval['Close'].iloc[:pre_len]
+            pre_interval[0] = full_interval['Open'].iloc[:pre_len]
+            pre_interval[1] = full_interval['High'].iloc[:pre_len]
+            pre_interval[2] = full_interval['Low'].iloc[:pre_len]
+            pre_interval[3] = full_interval['Close'].iloc[:pre_len]
 
-            label[0] = interval['Open'].iloc[pre_len:pre_len + post_len]
-            label[1] = interval['High'].iloc[pre_len:pre_len + post_len]
-            label[2] = interval['Low'].iloc[pre_len:pre_len + post_len]
-            label[3] = interval['Close'].iloc[pre_len:pre_len + post_len]
+            post_interval[0] = full_interval['Open'].iloc[pre_len:pre_len + post_len]
+            post_interval[1] = full_interval['High'].iloc[pre_len:pre_len + post_len]
+            post_interval[2] = full_interval['Low'].iloc[pre_len:pre_len + post_len]
+            post_interval[3] = full_interval['Close'].iloc[pre_len:pre_len + post_len]
 
             # TODO - some info dict can be returned also if needed
-            # datapoint_dict = {'open': interval['Open'].to_numpy(),
-            #                   'close': interval['Close'].to_numpy(),
+            # datapoint_dict = {'open': full_interval['Open'].to_numpy(),
+            #                   'close': full_interval['Close'].to_numpy(),
             #                   'index': None,
             #                   'symbol': None}
             # return datapoint_dict
 
-            return datapoint, label
+            return pre_interval, post_interval
 
 
 if __name__ == '__main__':
