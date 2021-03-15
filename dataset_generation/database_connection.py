@@ -3,13 +3,17 @@ import os
 import numpy as np
 import pandas as pd
 import random
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+
+# Constants for ndarray indexing
+OPEN, HIGH, LOW, CLOSE = 0, 1, 2, 3
 
 
 class HSMDataset:
 
-    def __init__(self, debug=False):
-        self.path = 'D:\Kovacs_Attila/08_Programming\Python_projects\Quant_Anal\data\Huge_Stock_Market_Dataset\Stocks'
+    def __init__(self, test_size, debug=False):
+        self.path = 'D:/Kovacs_Attila/08_Programming/Python_projects/Quant_Anal/data/Huge_Stock_Market_Dataset/Stocks'
         self.files = [f for f in os.listdir(self.path)]
 
         if debug:
@@ -17,11 +21,13 @@ class HSMDataset:
         else:
             self.files = self.files
 
-        self.dataframes = [None] * len(self.files)
+        dataframes = [None] * len(self.files)
 
         print('Loading files')
         for i, f in enumerate(tqdm(self.files)):
-            self.dataframes[i] = self.open_file(f)
+            dataframes[i] = self.open_file(f)
+
+        self.train_dataframes, self.test_dataframes = train_test_split(dataframes, test_size=test_size, shuffle=True)
 
     def open_file(self, filename):
         path = self.path + '/' + filename
@@ -29,16 +35,20 @@ class HSMDataset:
         dataframe.symbol = filename[:filename.index('.')]
         return dataframe
 
-    def sample_random_dataframe(self):
-        dataframe = random.choice(self.dataframes)
-        return dataframe
+    def sample_random_dataframe(self, subset):
+        assert subset in ('train', 'test')
 
-    def sample_random_interval(self, interval_len):
+        if subset == 'train':
+            return random.choice(self.train_dataframes)
+        else:
+            return random.choice(self.test_dataframes)
+
+    def sample_random_interval(self, interval_len, subset):
         assert interval_len > 0
 
-        max_sampling = 50
+        max_sampling = 100
         for _ in range(max_sampling):
-            dataframe = self.sample_random_dataframe()
+            dataframe = self.sample_random_dataframe(subset)
             symbol = dataframe.symbol
 
             start = np.random.randint(len(dataframe.index))
@@ -86,12 +96,12 @@ class HSMDataset:
 
         return True
 
-    def sample_datapoint(self, pre_len, post_len, return_type='df'):
+    def sample_datapoint(self, pre_len, post_len, subset, return_type='df'):
         assert pre_len > 0
         assert post_len > 0
         assert return_type in ('df', 'np')
 
-        full_interval = self.sample_random_interval(interval_len=(pre_len + post_len))
+        full_interval = self.sample_random_interval(interval_len=(pre_len + post_len), subset=subset)
         symbol = full_interval.symbol
 
         if return_type == 'df':
@@ -126,17 +136,23 @@ class HSMDataset:
 
             return pre_interval, post_interval
 
+    def sample_train_datapoint(self, pre_len, post_len, return_type='df'):
+        return self.sample_datapoint(pre_len, post_len, subset='train', return_type=return_type)
+
+    def sample_test_datapoint(self, pre_len, post_len, return_type='df'):
+        return self.sample_datapoint(pre_len, post_len, subset='test', return_type=return_type)
+
 
 if __name__ == '__main__':
-    ds = HSMDataset(debug=True)
+    ds = HSMDataset(test_size=0.1, debug=True)
 
     # Test 1
     for _ in range(2):
-        print(ds.sample_datapoint(pre_len=3, post_len=2, return_type='df'))
+        print(ds.sample_train_datapoint(pre_len=3, post_len=2, return_type='df'))
 
     # Test 2
     for _ in range(2):
-        print(ds.sample_datapoint(pre_len=3, post_len=2, return_type='np'))
+        print(ds.sample_test_datapoint(pre_len=3, post_len=2, return_type='np'))
 
     # Test 3 - NaN value
     dummy_df = pd.DataFrame({'Open': [2, 1, 4],
