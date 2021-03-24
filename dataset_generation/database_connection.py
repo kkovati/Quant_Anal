@@ -1,10 +1,14 @@
 import datetime
+import logging
+from logging import info as p
 import os
 import numpy as np
 import pandas as pd
 import random
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+
+logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 
 # Constants for ndarray indexing
 OPEN, HIGH, LOW, CLOSE = 0, 1, 2, 3
@@ -23,7 +27,7 @@ class HSMDataset:
 
         dataframes = [None] * len(self.files)
 
-        print('Loading files')
+        p('Loading files')
         for i, f in enumerate(tqdm(self.files)):
             dataframes[i] = self.open_file(f)
 
@@ -69,20 +73,6 @@ class HSMDataset:
             # print('Sampling problem in file', symbol, 'at line', str(start), 'Too short interval')
             return False
 
-        # Check NaN
-        if interval.isnull().values.any():
-            # print('Sampling problem in file', symbol, 'at line', str(start), 'Null value')
-            return False
-
-        # Check zero or negative values
-        flag = False
-        for column in ['Open', 'High', 'Low', 'Close']:
-            if (interval[column] <= 0).any():
-                flag = True
-        if flag:
-            # print('Sampling problem in file', symbol, 'at line', str(start), 'Zero value')
-            return False
-
         # Check for too long breaks between interval days
         for i in range(len(interval.index) - 1):
             day1 = interval.index[i]
@@ -92,6 +82,30 @@ class HSMDataset:
             if (day2 - day1).days > 7:
                 # print('Sampling problem in file', symbol, 'at line', str(start), str((day2 - day1).days),
                 #       'days long break in the interval')
+                return False
+
+        # Check sequence of same values
+        for column in ['Open', 'High', 'Low', 'Close']:
+            if interval[column][0] == interval[column][1]:
+                return False
+            if interval[column][-1] == interval[column][-2]:
+                return False
+            # if np.std(interval[column]) == 0:
+            #     return False
+
+        # Check NaN
+        if interval.isnull().values.any():
+            # print('Sampling problem in file', symbol, 'at line', str(start), 'Null value')
+            return False
+
+        # Check Inf
+        for column in ['Open', 'High', 'Low', 'Close']:
+            if np.isinf(interval[column]).any():
+                return False
+
+        # Check zero or negative values
+        for column in ['Open', 'High', 'Low', 'Close']:
+            if (interval[column] <= 0).any():
                 return False
 
         return True
@@ -143,6 +157,25 @@ class HSMDataset:
         return self.sample_datapoint(pre_len, post_len, subset='test', return_type=return_type)
 
 
+def generate_dataset(trainset_size, testset_size, pre_len, post_len, return_type='np'):
+    ds = HSMDataset(test_size=0.1, debug=True)
+
+    X_train = np.zeros((trainset_size, 4, pre_len))
+    y_train = np.zeros((trainset_size, 4, post_len))
+    X_test = np.zeros((testset_size, 4, pre_len))
+    y_test = np.zeros((testset_size, 4, post_len))
+
+    p('Sampling training set')
+    for i in tqdm(range(trainset_size)):
+        X_train[i], y_train[i] = ds.sample_train_datapoint(pre_len, post_len, return_type=return_type)
+
+    p('Sampling test set')
+    for i in tqdm(range(testset_size)):
+        X_test[i], y_test[i] = ds.sample_test_datapoint(pre_len, post_len, return_type=return_type)
+
+    return X_train, y_train, X_test, y_test
+
+
 if __name__ == '__main__':
     ds = HSMDataset(test_size=0.1, debug=True)
 
@@ -180,3 +213,11 @@ if __name__ == '__main__':
                             index=['2020-01-01', '2020-01-02', '2020-01-10'])
     print(dummy_df)
     ds.is_interval_valid(dummy_df, 'DUMMY', 3, 1234)
+
+    # Test 6
+    X_train, y_train, X_test, y_test = generate_dataset(3, 2, 3, 2)
+    print(X_train)
+    print(y_train)
+    print(X_test)
+    print(y_test)
+

@@ -44,8 +44,24 @@ def standardize_series(series):
 def standardize_ndarray(array):
     assert type(array) is np.ndarray
 
+    import warnings
+    warnings.filterwarnings("error")
+
     array -= np.mean(array)
-    array /= np.std(array)
+    s = np.std(array)
+    if s == 0:
+        # TODO - if this works, delete this check
+        print('Standard deviation is zero:')
+        print(s)
+        print(array)
+        input()
+    try:
+        array /= np.std(array)
+    except:
+        print('Normalizing problem')
+        print(s)
+        print(array)
+        input()
 
     return array
 

@@ -1,3 +1,4 @@
+from logging import info as p
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -5,7 +6,7 @@ import sklearn.metrics as metrics
 from sklearn.neighbors import KNeighborsClassifier
 from tqdm import tqdm
 
-from dataset_generation.database_connection import HSMDataset
+from dataset_generation.database_connection import generate_dataset
 from dataset_generation.database_connection import OPEN, HIGH, LOW, CLOSE
 from dataset_generation.labler import calc_profit
 from dataset_generation.standardize import standardize
@@ -42,86 +43,121 @@ def fit_knn(X_train, y_train, hyper_dict, visualization=False):
     return knn
 
 
-def generate_dataset(trainset_size, testset_size, hyper_dict, return_full_interval=False, debug=False):
-    ds = HSMDataset(test_size=0.1, debug=debug)
+def prepare_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict, return_full_interval=False,
+                    debug=False):
+    assert len(X_train_raw) == len(y_train_raw)
+    assert len(X_test_raw) == len(y_test_raw)
 
-    # Generate train set
-    X_train = np.empty((trainset_size, hyper_dict['pre_len']))
-    y_train = np.empty((trainset_size,))
-    X_train_full_interval = np.empty((trainset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
+    # Slice X sets
+    X_train_raw = X_train_raw[:, :, -(hyper_dict['pre_len'] + 1): -1]
+    X_test_raw = X_test_raw[:, :, -(hyper_dict['pre_len'] + 1): -1]
 
-    print('Process train set')
-    for i in tqdm(range(trainset_size)):
-        pre_interval, post_interval = ds.sample_train_datapoint(pre_len=hyper_dict['pre_len'],
-                                                                post_len=hyper_dict['post_len'],
-                                                                return_type='np')
+    assert X_train_raw.shape[2] == hyper_dict['pre_len']
+    assert X_test_raw.shape[2] == hyper_dict['pre_len']
 
-        _, profit = calc_profit(buy_price=pre_interval[CLOSE, -1], post_interval=post_interval[CLOSE],
+    X_train = np.zeros((len(X_train_raw), hyper_dict['pre_len']))
+    X_test = np.zeros((len(X_test_raw), hyper_dict['pre_len']))
+    y_train = np.zeros((len(y_train_raw),))
+    y_test = np.zeros((len(y_test_raw),))
+    y_profit = np.zeros((len(y_test_raw),))
+
+
+    # TODO - put an X_train.min assert check in database connection
+
+    # need concat, thats not OK
+    # X_train_full_interval = np.empty((trainset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
+    # X_test_full_interval = np.empty((testset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
+
+    p('Prepare train set')
+    for i in tqdm(range(len(X_train_raw))):
+        if X_train_raw[i, CLOSE, -1] <= 0:
+            input()
+        _, profit = calc_profit(buy_price=X_train_raw[i, CLOSE, -1],
+                                post_interval=y_train_raw[i, CLOSE],
                                 stop_loss=hyper_dict['stop_loss'],
                                 take_profit=hyper_dict['profit_threshold'])
 
-        X_train[i] = standardize(pre_interval.copy())[CLOSE]
+        # TODO std modifies argument value
+        X_train[i] = standardize(X_train_raw[i])[CLOSE]
         y_train[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
-        full_interval = np.concatenate((pre_interval, post_interval), axis=1)
-        X_train_full_interval[i] = standardize(full_interval)[CLOSE]
 
-    # Generate test set
-    X_test = np.empty((testset_size, hyper_dict['pre_len']))
-    y_test = np.empty((testset_size,))
-    X_test_full_interval = np.empty((testset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
+        # concat, thats not OK
+        # full_interval = np.concatenate((pre_interval, post_interval), axis=1)
+        # X_train_full_interval[i] = standardize(full_interval)[CLOSE]
 
-    print('Process test set')
-    for i in tqdm(range(testset_size)):
-        pre_interval, post_interval = ds.sample_test_datapoint(pre_len=hyper_dict['pre_len'],
-                                                               post_len=hyper_dict['post_len'],
-                                                               return_type='np')
-
-        _, profit = calc_profit(buy_price=pre_interval[CLOSE, -1], post_interval=post_interval[CLOSE],
+    p('Prepare test set')
+    for i in tqdm(range(len(X_test_raw))):
+        _, profit = calc_profit(buy_price=X_test_raw[i, CLOSE, -1],
+                                post_interval=y_train_raw[i, CLOSE],
                                 stop_loss=hyper_dict['stop_loss'],
                                 take_profit=hyper_dict['profit_threshold'])
 
-        X_test[i] = standardize(pre_interval.copy())[CLOSE]
+        X_test[i] = standardize(X_test_raw[i])[CLOSE]
         y_test[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
-        full_interval = np.concatenate((pre_interval, post_interval), axis=1)
-        X_test_full_interval[i] = standardize(full_interval)[CLOSE]
+        y_profit[i] = profit
+
+        # concat, thats not OK
+        # full_interval = np.concatenate((pre_interval, post_interval), axis=1)
+        # X_test_full_interval[i] = standardize(full_interval)[CLOSE]
 
     if return_full_interval:
-        return X_train, y_train, X_train_full_interval, X_test, y_test, X_test_full_interval
+        # return X_train, y_train, X_train_full_interval, X_test, y_test, X_test_full_interval
+        return X_train, y_train, X_test, y_test, y_profit
     else:
-        return X_train, y_train, X_test, y_test
+        return X_train, y_train, X_test, y_test, y_profit
 
 
 def init_random_hyperparameters():
-    return {'pre_len': np.random.randint(10, 61),
-            'post_len': np.random.randint(3, 20),
-            'profit_threshold': round(np.random.uniform(101, 108)),
-            'stop_loss': round(np.random.uniform(90, 99)),
-            'n_neighbors': np.random.choice(np.arange(1, 21)),
-            'weights': np.random.choice(('uniform', 'distance')),
-            'minkowski_p': np.random.choice((1, 2))}
+    hyperdict = {'pre_len': np.random.randint(10, 61),
+                 'post_len': np.random.randint(3, 20),
+                 'profit_threshold': round(np.random.uniform(101, 108)),
+                 'take_profit': 0,
+                 'stop_loss': round(np.random.uniform(90, 99)),
+                 'n_neighbors': np.random.choice(np.arange(1, 21)),
+                 'weights': np.random.choice(('uniform', 'distance')),
+                 'minkowski_p': np.random.choice((1, 2))}
+
+    hyperdict['take_profit'] = round(np.random.uniform(hyperdict['profit_threshold'] + 1, 110)),
+
+    return hyperdict
 
 
 def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=False):
-    hyper_dict = init_random_hyperparameters()
-    result_columns = ['TP/TN/FN/FP', 'ACC', 'F1']
-    columns = list(hyper_dict) + result_columns
+    X_train_raw, y_train_raw, X_test_raw, y_test_raw = generate_dataset(trainset_size, testset_size, 61, 20)
 
-    X_train, y_train, X_test, y_test = generate_dataset(trainset_size, testset_size, hyper_dict,
-                                                        return_full_interval=False, debug=debug)
+    df = pd.DataFrame()
 
-    df = pd.DataFrame(columns=columns)
-
-    print('Hyperparameter tuning')
-    for _ in tqdm(range(n_tune_iteration)):
+    p('Start Hyperparameter tuning')
+    for i in range(n_tune_iteration):
+        p(f'{i + 1}/{n_tune_iteration} Hyperparameter settings')
         hyper_dict = init_random_hyperparameters()
+
+        X_train_raw = X_train_raw.copy()
+        y_train_raw = y_train_raw.copy()
+        X_test_raw = X_test_raw.copy()
+        y_test_raw = y_test_raw.copy()
+
+        ret_tuple = prepare_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict,
+                                    return_full_interval=False, debug=debug)
+
+        X_train, y_train, X_test, y_test, y_profit = ret_tuple
 
         knn = fit_knn(X_train, y_train, hyper_dict)
 
         y_pred = knn.predict(X_test)
         y_pred_proba = knn.predict_proba(X_test)
 
+        hyper_dict['AVG_PROFIT'] = None
+
         hyper_dict['ACC'] = metrics.accuracy_score(y_test, y_pred)
+        hyper_dict['F1'] = metrics.f1_score(y_test, y_pred)
+        hyper_dict['MCC'] = metrics.matthews_corrcoef(y_test, y_pred)
+        hyper_dict['PREC'] = metrics.precision_score(y_test, y_pred)
+        hyper_dict['REC'] = metrics.recall_score(y_test, y_pred)
         cm = metrics.confusion_matrix(y_test, y_pred)
+        cond_pos = cm[1, 1] + cm[1, 0]
+        cond_neg = cm[0, 0] + cm[0, 1]
+        hyper_dict['P/N'] = round(cond_pos / (cond_pos + cond_neg), 2)
         hyper_dict['TP/TN/FN/FP'] = f'{str(cm[1, 1])}/{str(cm[0, 0])}/{str(cm[1, 0])}/{str(cm[0, 1])}'
 
         df = df.append(hyper_dict, ignore_index=True, verify_integrity=True)
@@ -132,7 +168,7 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 
 
 if __name__ == '__main__':
-    hyperparameter_tuner(trainset_size=10000,
-                         testset_size=1000,
-                         n_tune_iteration=10,
-                         debug=False)
+    hyperparameter_tuner(trainset_size=100,
+                         testset_size=100,
+                         n_tune_iteration=20,
+                         debug=True)
