@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from dataset_generation.database_connection import HSMDataset
+from dataset_generation.hsm_dataset import HSMDataset
 
 
 def standardize(interval):
@@ -44,24 +44,14 @@ def standardize_series(series):
 def standardize_ndarray(array):
     assert type(array) is np.ndarray
 
-    import warnings
-    warnings.filterwarnings("error")
+    # Copy input to prevent side effect
+    array = array.copy()
 
     array -= np.mean(array)
-    s = np.std(array)
-    if s == 0:
-        # TODO - if this works, delete this check
-        print('Standard deviation is zero:')
-        print(s)
-        print(array)
-        input()
-    try:
-        array /= np.std(array)
-    except:
-        print('Normalizing problem')
-        print(s)
-        print(array)
-        input()
+
+    assert np.std(array) > 0
+
+    array /= np.std(array)
 
     return array
 

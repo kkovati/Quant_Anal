@@ -6,8 +6,8 @@ import sklearn.metrics as metrics
 from sklearn.neighbors import KNeighborsClassifier
 from tqdm import tqdm
 
-from dataset_generation.database_connection import generate_dataset
-from dataset_generation.database_connection import OPEN, HIGH, LOW, CLOSE
+from dataset_generation.hsm_dataset import generate_dataset
+from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
 from dataset_generation.labler import calc_profit
 from dataset_generation.standardize import standardize
 
@@ -43,26 +43,30 @@ def fit_knn(X_train, y_train, hyper_dict, visualization=False):
     return knn
 
 
-def prepare_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict, return_full_interval=False,
-                    debug=False):
+def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict, return_full_interval=False,
+                       debug=False):
     assert len(X_train_raw) == len(y_train_raw)
     assert len(X_test_raw) == len(y_test_raw)
 
+    # Copy
+    X_train_cpy = X_train_raw.copy()
+    y_train_raw = y_train_raw.copy()
+    X_test_cpy = X_test_raw.copy()
+    y_test_raw = y_test_raw.copy()
+
     # Slice X sets
-    X_train_raw = X_train_raw[:, :, -(hyper_dict['pre_len'] + 1): -1]
-    X_test_raw = X_test_raw[:, :, -(hyper_dict['pre_len'] + 1): -1]
+    X_train_sliced = X_train_cpy[:, :, -(hyper_dict['pre_len'] + 1): -1]
+    X_test_sliced = X_test_cpy[:, :, -(hyper_dict['pre_len'] + 1): -1]
 
-    assert X_train_raw.shape[2] == hyper_dict['pre_len']
-    assert X_test_raw.shape[2] == hyper_dict['pre_len']
+    assert X_train_sliced.shape[2] == hyper_dict['pre_len']
+    assert X_test_sliced.shape[2] == hyper_dict['pre_len']
 
+    # Init preprocessed dataset arrays
     X_train = np.zeros((len(X_train_raw), hyper_dict['pre_len']))
     X_test = np.zeros((len(X_test_raw), hyper_dict['pre_len']))
     y_train = np.zeros((len(y_train_raw),))
     y_test = np.zeros((len(y_test_raw),))
     y_profit = np.zeros((len(y_test_raw),))
-
-
-    # TODO - put an X_train.min assert check in database connection
 
     # need concat, thats not OK
     # X_train_full_interval = np.empty((trainset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
@@ -70,15 +74,16 @@ def prepare_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict
 
     p('Prepare train set')
     for i in tqdm(range(len(X_train_raw))):
-        if X_train_raw[i, CLOSE, -1] <= 0:
-            input()
-        _, profit = calc_profit(buy_price=X_train_raw[i, CLOSE, -1],
-                                post_interval=y_train_raw[i, CLOSE],
-                                stop_loss=hyper_dict['stop_loss'],
-                                take_profit=hyper_dict['profit_threshold'])
+        # Calculate profit
+        profit = calc_profit(buy_price=X_train_sliced[i, CLOSE, -1],
+                             post_interval=y_train_raw[i],
+                             stop_loss=hyper_dict['stop_loss'],
+                             take_profit=hyper_dict['take_profit'])
 
-        # TODO std modifies argument value
-        X_train[i] = standardize(X_train_raw[i])[CLOSE]
+        # Standardize chart
+        X_train[i] = standardize(X_train_sliced[i])[CLOSE]
+
+        # Labeling
         y_train[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
 
         # concat, thats not OK
@@ -87,13 +92,19 @@ def prepare_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict
 
     p('Prepare test set')
     for i in tqdm(range(len(X_test_raw))):
-        _, profit = calc_profit(buy_price=X_test_raw[i, CLOSE, -1],
-                                post_interval=y_train_raw[i, CLOSE],
-                                stop_loss=hyper_dict['stop_loss'],
-                                take_profit=hyper_dict['profit_threshold'])
+        # Calculate profit
+        profit = calc_profit(buy_price=X_test_sliced[i, CLOSE, -1],
+                             post_interval=y_train_raw[i],
+                             stop_loss=hyper_dict['stop_loss'],
+                             take_profit=hyper_dict['take_profit'])
 
+        # Standardize chart
         X_test[i] = standardize(X_test_raw[i])[CLOSE]
+
+        # Labeling
         y_test[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
+
+        # Save profit of each test datapoint
         y_profit[i] = profit
 
         # concat, thats not OK
@@ -117,7 +128,7 @@ def init_random_hyperparameters():
                  'weights': np.random.choice(('uniform', 'distance')),
                  'minkowski_p': np.random.choice((1, 2))}
 
-    hyperdict['take_profit'] = round(np.random.uniform(hyperdict['profit_threshold'] + 1, 110)),
+    hyperdict['take_profit'] = round(np.random.uniform(hyperdict['profit_threshold'] + 1, 110))
 
     return hyperdict
 
@@ -132,23 +143,31 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
         p(f'{i + 1}/{n_tune_iteration} Hyperparameter settings')
         hyper_dict = init_random_hyperparameters()
 
-        X_train_raw = X_train_raw.copy()
-        y_train_raw = y_train_raw.copy()
-        X_test_raw = X_test_raw.copy()
-        y_test_raw = y_test_raw.copy()
+        returned_tuple = preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict,
+                                            return_full_interval=False, debug=debug)
 
-        ret_tuple = prepare_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict,
-                                    return_full_interval=False, debug=debug)
-
-        X_train, y_train, X_test, y_test, y_profit = ret_tuple
+        X_train, y_train, X_test, y_test, y_profit = returned_tuple
 
         knn = fit_knn(X_train, y_train, hyper_dict)
 
         y_pred = knn.predict(X_test)
         y_pred_proba = knn.predict_proba(X_test)
 
-        hyper_dict['AVG_PROFIT'] = None
+        assert len(y_pred) == testset_size
+        assert len(y_profit) == testset_size
 
+        # Calculate average profit
+        sum_profit = 0
+        for pred, profit in zip(y_pred, y_profit):
+            print(profit)
+            if pred == 1:
+                sum_profit += profit
+            else:
+                assert pred == 0
+                sum_profit += 100
+        avg_profit = sum_profit / testset_size
+
+        hyper_dict['AVG_PROFIT'] = avg_profit
         hyper_dict['ACC'] = metrics.accuracy_score(y_test, y_pred)
         hyper_dict['F1'] = metrics.f1_score(y_test, y_pred)
         hyper_dict['MCC'] = metrics.matthews_corrcoef(y_test, y_pred)

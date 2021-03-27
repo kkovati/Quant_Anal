@@ -3,7 +3,7 @@ import numpy as np
 from scipy.misc import electrocardiogram
 from scipy.signal import find_peaks
 
-from dataset_generation.database_connection import HSMDataset
+from dataset_generation.hsm_dataset import HSMDataset
 
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html
 

@@ -173,6 +173,11 @@ def generate_dataset(trainset_size, testset_size, pre_len, post_len, return_type
     for i in tqdm(range(testset_size)):
         X_test[i], y_test[i] = ds.sample_test_datapoint(pre_len, post_len, return_type=return_type)
 
+    assert X_train.min() > 0
+    assert X_test.min() > 0
+    assert y_train.min() > 0
+    assert y_test.min() > 0
+
     return X_train, y_train, X_test, y_test
 
 
@@ -220,4 +225,3 @@ if __name__ == '__main__':
     print(y_train)
     print(X_test)
     print(y_test)
-
