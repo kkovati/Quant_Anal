@@ -1,5 +1,8 @@
+import logging
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
 
@@ -54,3 +57,44 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
 
     # Return profit
     return last_price * 100 / buy_price
+
+
+def calc_trend():
+    mu = .001
+    sigma = .01
+    start_price = 5
+
+    n_timeseries = 5
+    timeseries_length = 20
+
+    y = []
+
+    for i in range(n_timeseries):
+        # np.random.seed(0)
+        returns = np.random.normal(loc=mu, scale=sigma, size=timeseries_length)
+        timeseries = start_price * (1 + returns).cumprod()
+        timeseries -= timeseries[0]
+        plt.plot(timeseries)
+        y.append(timeseries)
+
+    X = np.reshape(np.concatenate([np.arange(timeseries_length)] * n_timeseries), (-1, 1))
+    y = np.reshape(np.concatenate(y), (-1, 1))
+
+    reg = LinearRegression(fit_intercept=False).fit(X, y)
+
+    print(reg.coef_)
+    print(reg.intercept_)
+
+    assert reg.coef_.shape == (1, 1)
+    # assert reg.intercept_.shape == (1,)
+    assert reg.intercept_ == 0
+
+    approx_timeseries = (np.arange(timeseries_length) * reg.coef_[0, 0])  # + reg.intercept_[0]
+    plt.plot(approx_timeseries)
+
+    logging.getLogger('matplotlib.font_manager').disabled = True
+    plt.show()
+
+
+if __name__ == "__main__":
+    calc_trend()
