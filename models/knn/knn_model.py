@@ -50,9 +50,9 @@ def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_d
 
     # Copy
     X_train_cpy = X_train_raw.copy()
-    y_train_raw = y_train_raw.copy()
+    # y_train_raw = y_train_raw.copy()
     X_test_cpy = X_test_raw.copy()
-    y_test_raw = y_test_raw.copy()
+    # y_test_raw = y_test_raw.copy()
 
     # Slice X sets
     X_train_sliced = X_train_cpy[:, :, -(hyper_dict['pre_len'] + 1): -1]
@@ -75,16 +75,16 @@ def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_d
     p('Prepare train set')
     for i in tqdm(range(len(X_train_raw))):
         # Calculate profit
-        profit = calc_profit(buy_price=X_train_sliced[i, CLOSE, -1],
-                             post_interval=y_train_raw[i],
-                             stop_loss=hyper_dict['stop_loss'],
-                             take_profit=hyper_dict['take_profit'])
+        # profit = calc_profit(buy_price=X_train_sliced[i, CLOSE, -1],
+        #                      post_interval=y_train_raw[i],
+        #                      stop_loss=hyper_dict['stop_loss'],
+        #                      take_profit=hyper_dict['take_profit'])
 
         # Standardize chart
         X_train[i] = standardize(X_train_sliced[i])[CLOSE]
 
         # Labeling
-        y_train[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
+        # y_train[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
 
         # concat, thats not OK
         # full_interval = np.concatenate((pre_interval, post_interval), axis=1)
@@ -93,10 +93,10 @@ def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_d
     p('Prepare test set')
     for i in tqdm(range(len(X_test_raw))):
         # Calculate profit
-        profit = calc_profit(buy_price=X_test_sliced[i, CLOSE, -1],
-                             post_interval=y_train_raw[i],
-                             stop_loss=hyper_dict['stop_loss'],
-                             take_profit=hyper_dict['take_profit'])
+        # profit = calc_profit(buy_price=X_test_sliced[i, CLOSE, -1],
+        #                      post_interval=y_test_raw[i],
+        #                      stop_loss=hyper_dict['stop_loss'],
+        #                      take_profit=hyper_dict['take_profit'])
 
         # Standardize chart
         X_test[i] = standardize(X_test_raw[i])[CLOSE]
@@ -143,15 +143,17 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
         p(f'{i + 1}/{n_tune_iteration} Hyperparameter settings')
         hyper_dict = init_random_hyperparameters()
 
-        returned_tuple = preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict,
-                                            return_full_interval=False, debug=debug)
+        retval = preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict,
+                                    return_full_interval=False, debug=debug)
 
-        X_train, y_train, X_test, y_test, y_profit = returned_tuple
+        X_train, y_train, X_test, y_test, y_profit = retval
 
         knn = fit_knn(X_train, y_train, hyper_dict)
 
         y_pred = knn.predict(X_test)
         y_pred_proba = knn.predict_proba(X_test)
+
+        neigh_ind = knn.kneighbors(X_test)
 
         assert len(y_pred) == testset_size
         assert len(y_profit) == testset_size
