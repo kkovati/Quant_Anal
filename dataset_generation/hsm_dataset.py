@@ -158,7 +158,7 @@ class HSMDataset:
 
 
 def generate_dataset(trainset_size, testset_size, pre_len, post_len, return_type='np'):
-    ds = HSMDataset(test_size=0.1, debug=True)
+    ds = HSMDataset(test_size=testset_size / (trainset_size + testset_size), debug=True)
 
     X_train = np.zeros((trainset_size, 4, pre_len))
     y_train = np.zeros((trainset_size, 4, post_len))
@@ -182,7 +182,7 @@ def generate_dataset(trainset_size, testset_size, pre_len, post_len, return_type
 
 
 if __name__ == '__main__':
-    ds = HSMDataset(test_size=0.1, debug=True)
+    ds = HSMDataset(test_size=0.25, debug=True)
 
     # Test 1
     for _ in range(2):
@@ -220,7 +220,7 @@ if __name__ == '__main__':
     ds.is_interval_valid(dummy_df, 'DUMMY', 3, 1234)
 
     # Test 6
-    X_train, y_train, X_test, y_test = generate_dataset(3, 2, 3, 2)
+    X_train, y_train, X_test, y_test = generate_dataset(10, 10, 3, 2)
     print(X_train)
     print(y_train)
     print(X_test)

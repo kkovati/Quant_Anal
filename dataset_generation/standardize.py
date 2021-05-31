@@ -59,7 +59,7 @@ def standardize_ndarray(array):
 if __name__ == '__main__':
     import plotly.express as px
 
-    ds = HSMDataset(debug=True)
+    ds = HSMDataset(test_size=0.1, debug=True)
     df = ds.open_file('ge.us.txt')
     df = df[['Open', 'High', 'Low', 'Close']]
     df = df.iloc[14000:14050]

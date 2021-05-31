@@ -96,5 +96,9 @@ def calc_trend():
     plt.show()
 
 
+def generate_random_interval():
+    pass
+
+
 if __name__ == "__main__":
     calc_trend()
