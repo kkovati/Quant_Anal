@@ -15,6 +15,9 @@ OPEN, HIGH, LOW, CLOSE = 0, 1, 2, 3
 
 
 class HSMDataset:
+    """
+    Huge_Stock_Market_Dataset parser class
+    """
 
     def __init__(self, test_size, debug=False):
         self.path = 'D:/Kovacs_Attila/08_Programming/Python_projects/Quant_Anal/data/Huge_Stock_Market_Dataset/Stocks'

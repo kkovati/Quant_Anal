@@ -1,5 +1,8 @@
 from Zipline.api import order, record, symbol
 from Zipline.algorithm import TradingAlgorithm
+
+# https://blog.quantinsti.com/introduction-zipline-python/
+
 def initialize(context):
    pass
 
