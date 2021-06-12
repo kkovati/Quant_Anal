@@ -6,7 +6,7 @@ from dataset_generation.hsm_dataset import HSMDataset
 
 def standardize(interval):
     if type(interval) is pd.DataFrame:
-        return standardize_ohcl_dataframe(interval)
+        return standardize_ohlc_dataframe(interval)
     elif type(interval) is pd.Series:
         return standardize_series(interval)
     elif type(interval) is np.ndarray:
@@ -15,7 +15,7 @@ def standardize(interval):
         raise Exception('Wrong input type')
 
 
-def standardize_ohcl_dataframe(dataframe):
+def standardize_ohlc_dataframe(dataframe):
     assert type(dataframe) is pd.DataFrame
     assert len(dataframe.columns) == 4
 
