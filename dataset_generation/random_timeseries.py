@@ -3,7 +3,7 @@ import numpy as np
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
 
 
-def generate_random_timeseries(length, mu=.001, sigma=.01, start_price=5):
+def generate_random_timeseries(length, mu=.0001, sigma=.01, start_price=100):
     returns = np.random.normal(loc=mu, scale=sigma, size=length)
     timeseries = start_price * (1 + returns).cumprod()
     timeseries += (start_price - timeseries[0])
@@ -26,4 +26,15 @@ def generate_random_interval(length):
 if __name__ == '__main__':
     # np.random.seed(0)
     generate_random_timeseries(length=20)
-    generate_random_interval(length=20)
+    interval = generate_random_interval(length=200)
+
+    from plotly.graph_objects import Candlestick, Figure
+    from plotly.offline import plot
+    candlestick = Candlestick(x=np.arange(interval.shape[1]),
+                              open=interval[OPEN],
+                              high=interval[HIGH],
+                              low=interval[LOW],
+                              close=interval[CLOSE])
+    figure = Figure(data=[candlestick])
+    figure.update_layout(title='Random interval', yaxis_title='Price')
+    plot(figure)

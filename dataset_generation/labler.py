@@ -59,7 +59,7 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
     return last_price * 100 / buy_price
 
 
-def calc_trend():
+def calc_trend(pre_interval, post_interval):
     mu = .001
     sigma = .01
     start_price = 5
