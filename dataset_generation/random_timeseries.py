@@ -25,7 +25,6 @@ def generate_random_interval(length):
 
 if __name__ == '__main__':
     # np.random.seed(0)
-    generate_random_timeseries(length=20)
     interval = generate_random_interval(length=200)
 
     from plotly.graph_objects import Candlestick, Figure

@@ -42,17 +42,13 @@ def standardize_series(series):
 
 
 def standardize_ndarray(array):
-    assert type(array) is np.ndarray
-
-    # Copy input to prevent side effect
-    array = array.copy()
-
-    array -= np.mean(array)
-
+    assert isinstance(array, np.ndarray)
+    assert array.shape[0] == 4
     assert np.std(array) > 0
 
+    array = array.copy()  # Copy input to prevent side effect
+    array -= np.mean(array)
     array /= np.std(array)
-
     return array
 
 
