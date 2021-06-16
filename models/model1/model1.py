@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sklearn.svm import LinearSVC
 
 import indicators.moving_averages as mavg
 
@@ -14,4 +15,8 @@ class Model1:
 
 
 if __name__ == '__main__':
+
+
+
+    svc = LinearSVC()
     pass

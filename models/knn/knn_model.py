@@ -48,7 +48,7 @@ def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_d
     assert len(X_train_raw) == len(y_train_raw)
     assert len(X_test_raw) == len(y_test_raw)
 
-    # Copy
+    # Copy (note: slicing does NOT make a copy, it refers to original array
     X_train_cpy = X_train_raw.copy()
     # y_train_raw = y_train_raw.copy()
     X_test_cpy = X_test_raw.copy()
