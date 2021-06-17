@@ -6,9 +6,10 @@ import sklearn.metrics as metrics
 from sklearn.neighbors import KNeighborsClassifier
 from tqdm import tqdm
 
+from dataset_generation.dataset_analyzation import find_threshold
 from dataset_generation.hsm_dataset import generate_dataset
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
-from dataset_generation.labler import calc_profit
+from dataset_generation.labler import calc_profit, calc_trend
 from dataset_generation.standardize import standardize
 
 
@@ -43,85 +44,78 @@ def fit_knn(X_train, y_train, hyper_dict, visualization=False):
     return knn
 
 
-def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict, return_full_interval=False,
-                       debug=False):
+def preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict):
     assert len(X_train_raw) == len(y_train_raw)
     assert len(X_test_raw) == len(y_test_raw)
 
     # Copy (note: slicing does NOT make a copy, it refers to original array
-    X_train_cpy = X_train_raw.copy()
-    # y_train_raw = y_train_raw.copy()
-    X_test_cpy = X_test_raw.copy()
-    # y_test_raw = y_test_raw.copy()
+    X_train_cpy = np.copy(X_train_raw)
+    X_test_cpy = np.copy(X_test_raw)
 
     # Slice X sets
     X_train_sliced = X_train_cpy[:, :, -(hyper_dict['pre_len'] + 1): -1]
     X_test_sliced = X_test_cpy[:, :, -(hyper_dict['pre_len'] + 1): -1]
-
     assert X_train_sliced.shape[2] == hyper_dict['pre_len']
     assert X_test_sliced.shape[2] == hyper_dict['pre_len']
 
     # Init preprocessed dataset arrays
-    X_train = np.zeros((len(X_train_raw), hyper_dict['pre_len']))
-    X_test = np.zeros((len(X_test_raw), hyper_dict['pre_len']))
-    y_train = np.zeros((len(y_train_raw),))
-    y_test = np.zeros((len(y_test_raw),))
-    y_profit = np.zeros((len(y_test_raw),))
-
-    # need concat, thats not OK
-    # X_train_full_interval = np.empty((trainset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
-    # X_test_full_interval = np.empty((testset_size, hyper_dict['pre_len'] + hyper_dict['post_len']))
+    X_train = np.zeros((len(X_train_raw), 4, hyper_dict['pre_len']))
+    X_test = np.zeros((len(X_test_raw), 4, hyper_dict['pre_len']))
+    y_train_trend = np.zeros((len(y_train_raw),))
+    y_test_trend = np.zeros((len(y_test_raw),))
+    y_train_trend_thres = np.zeros((len(y_train_raw),))
+    y_test_trend_thres = np.zeros((len(y_test_raw),))
+    y_train_profit = np.zeros((len(y_train_raw),))
+    y_test_profit = np.zeros((len(y_test_raw),))
 
     p('Prepare train set')
     for i in tqdm(range(len(X_train_raw))):
         # Calculate profit
-        # profit = calc_profit(buy_price=X_train_sliced[i, CLOSE, -1],
-        #                      post_interval=y_train_raw[i],
-        #                      stop_loss=hyper_dict['stop_loss'],
-        #                      take_profit=hyper_dict['take_profit'])
+        y_train_profit[i] = calc_profit(buy_price=X_train_sliced[i, CLOSE, -1],
+                                        post_interval=y_train_raw[i],
+                                        stop_loss=hyper_dict['stop_loss'],
+                                        take_profit=hyper_dict['take_profit'])
+
+        # Calc trend label
+        y_train_trend[i] = calc_trend(X_train_raw, y_train_raw)
 
         # Standardize chart
-        X_train[i] = standardize(X_train_sliced[i])[CLOSE]
+        X_train[i] = standardize(X_train_sliced[i])
 
-        # Labeling
-        # y_train[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
+    trend_thres = find_threshold(y_train_trend, hyper_dict['trend_threshold'] / 100)
 
-        # concat, thats not OK
-        # full_interval = np.concatenate((pre_interval, post_interval), axis=1)
-        # X_train_full_interval[i] = standardize(full_interval)[CLOSE]
+    p('Threshold train trend labels')
+    for i in tqdm(range(len(X_train_raw))):
+        # Threshold trend labels
+        y_train_trend_thres[i] = 1 if y_train_trend[i] >= trend_thres else 0
 
     p('Prepare test set')
     for i in tqdm(range(len(X_test_raw))):
         # Calculate profit
-        # profit = calc_profit(buy_price=X_test_sliced[i, CLOSE, -1],
-        #                      post_interval=y_test_raw[i],
-        #                      stop_loss=hyper_dict['stop_loss'],
-        #                      take_profit=hyper_dict['take_profit'])
+        y_test_profit[i] = calc_profit(buy_price=X_test_sliced[i, CLOSE, -1],
+                                       post_interval=y_test_raw[i],
+                                       stop_loss=hyper_dict['stop_loss'],
+                                       take_profit=hyper_dict['take_profit'])
+
+        # Calc trend label
+        y_test_trend[i] = calc_trend(X_test_raw, y_test_raw)
 
         # Standardize chart
-        X_test[i] = standardize(X_test_raw[i])[CLOSE]
+        X_test[i] = standardize(X_test_sliced[i])
 
-        # Labeling
-        y_test[i] = 1 if profit >= hyper_dict['profit_threshold'] else 0
+    p('Threshold test trend labels')
+    for i in tqdm(range(len(X_test_raw))):
+        # Threshold trend labels
+        y_test_trend_thres[i] = 1 if y_test_trend[i] >= trend_thres else 0
 
-        # Save profit of each test datapoint
-        y_profit[i] = profit
-
-        # concat, thats not OK
-        # full_interval = np.concatenate((pre_interval, post_interval), axis=1)
-        # X_test_full_interval[i] = standardize(full_interval)[CLOSE]
-
-    if return_full_interval:
-        # return X_train, y_train, X_train_full_interval, X_test, y_test, X_test_full_interval
-        return X_train, y_train, X_test, y_test, y_profit
-    else:
-        return X_train, y_train, X_test, y_test, y_profit
+    return X_train, y_train_trend_thres, y_train_profit, X_test, y_test_trend_thres, y_test_profit
 
 
 def init_random_hyperparameters():
     hyperdict = {'pre_len': np.random.randint(10, 61),
                  'post_len': np.random.randint(3, 20),
-                 'profit_threshold': round(np.random.uniform(101, 108)),
+                 # 'profit_threshold': round(np.random.uniform(101, 108)),
+                 'trend_threshold': np.random.randint(3, 40),
                  'take_profit': 0,
                  'stop_loss': round(np.random.uniform(90, 99)),
                  'n_neighbors': np.random.choice(np.arange(1, 21)),
@@ -143,12 +137,11 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
         p(f'{i + 1}/{n_tune_iteration} Hyperparameter settings')
         hyper_dict = init_random_hyperparameters()
 
-        retval = preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict,
-                                    return_full_interval=False, debug=debug)
+        retval = preprocess_dataset(X_train_raw, y_train_raw, X_test_raw, y_test_raw, hyper_dict)
 
-        X_train, y_train, X_test, y_test, y_profit = retval
+        X_train, y_train_trend_thres, y_train_profit, X_test, y_test_trend_thres, y_test_profit = retval
 
-        knn = fit_knn(X_train, y_train, hyper_dict)
+        knn = fit_knn(X_train, y_train_trend_thres, hyper_dict)
 
         y_pred = knn.predict(X_test)
         y_pred_proba = knn.predict_proba(X_test)
@@ -156,7 +149,6 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
         neigh_ind = knn.kneighbors(X_test)
 
         assert len(y_pred) == testset_size
-        assert len(y_profit) == testset_size
 
         # Calculate average profit
         sum_profit = 0

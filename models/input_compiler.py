@@ -17,7 +17,7 @@ from dataset_generation.standardize import standardize
 # https://towardsdatascience.com/trading-strategy-technical-analysis-with-python-ta-lib-3ce9d6ce5614
 
 def tech_anal_input_compiler(pre_interval):
-    pre_interval = standardize(pre_interval)
+    pre_interval = standardize(np.copy(pre_interval))
     open = pre_interval[OPEN]
     high = pre_interval[HIGH]
     low = pre_interval[LOW]

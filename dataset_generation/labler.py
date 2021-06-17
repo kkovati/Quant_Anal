@@ -62,7 +62,7 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
 
 
 def calc_trend(pre_interval, post_interval, debug=False):
-    interval = np.concatenate((pre_interval, post_interval), axis=1)
+    interval = np.concatenate((np.copy(pre_interval), np.copy(post_interval)), axis=1)
     assert interval.shape[0] == 4
 
     interval_std = standardize(interval)
