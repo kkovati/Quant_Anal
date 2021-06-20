@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-import labler
+import dataset_generation.labler
 
 
 def profit_distribution(dataframe, post, stop_loss, levels, n_sample=1000, plot=False):

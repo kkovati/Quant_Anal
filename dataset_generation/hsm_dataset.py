@@ -18,7 +18,6 @@ class HSMDataset:
     """
     Huge_Stock_Market_Dataset parser class
     """
-
     def __init__(self, test_size, debug=False):
         self.path = 'D:/Kovacs_Attila/08_Programming/Python_projects/Quant_Anal/data/Huge_Stock_Market_Dataset/Stocks'
         self.files = [f for f in os.listdir(self.path)]
@@ -35,6 +34,8 @@ class HSMDataset:
             dataframes[i] = self.open_file(f)
 
         self.train_dataframes, self.test_dataframes = train_test_split(dataframes, test_size=test_size, shuffle=True)
+        p(f'{len(self.train_dataframes)}/{len(dataframes)} dataframes used in train set')
+        p(f'{len(self.test_dataframes)}/{len(dataframes)} dataframes used in test set')
 
     def open_file(self, filename):
         path = self.path + '/' + filename
@@ -160,8 +161,8 @@ class HSMDataset:
         return self.sample_datapoint(pre_len, post_len, subset='test', return_type=return_type)
 
 
-def generate_dataset(trainset_size, testset_size, pre_len, post_len, return_type='np'):
-    ds = HSMDataset(test_size=testset_size / (trainset_size + testset_size), debug=True)
+def generate_dataset(trainset_size, testset_size, pre_len, post_len, return_type='np', debug=False):
+    ds = HSMDataset(test_size=testset_size / (trainset_size + testset_size), debug=debug)
 
     X_train = np.zeros((trainset_size, 4, pre_len))
     y_train = np.zeros((trainset_size, 4, post_len))

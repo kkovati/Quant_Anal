@@ -5,8 +5,8 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
-from random_timeseries import generate_random_interval
-from standardize import standardize
+from dataset_generation.random_timeseries import generate_random_interval
+from dataset_generation.standardize import standardize
 
 
 def calc_profit(buy_price, post_interval, stop_loss, take_profit):
@@ -31,11 +31,11 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
     assert post_interval.shape[1] > 1
     assert post_interval.min() > 0
     assert 0 < buy_price
-    assert 0 < stop_loss < 100
-    assert 100 < take_profit
+    assert 0 < stop_loss < 1
+    assert 1 < take_profit
 
-    tp_price = buy_price * take_profit / 100
-    curr_sl_price = buy_price * stop_loss / 100
+    tp_price = buy_price * take_profit
+    curr_sl_price = buy_price * stop_loss
     delta_price = buy_price - curr_sl_price
 
     for high, low, close in zip(post_interval[HIGH], post_interval[LOW], post_interval[CLOSE]):
@@ -43,9 +43,9 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
         # Assumes daily low goes lower than the updated stop loss (which calculated with the daily high)
         # before daily high goes higher than take profit
         if low <= curr_sl_price:
-            return curr_sl_price * 100 / buy_price
+            return curr_sl_price / buy_price
         if high >= tp_price:
-            return tp_price * 100 / buy_price
+            return tp_price / buy_price
 
         # Update current stop loss price
         curr_sl_price = max(curr_sl_price, high - delta_price)
@@ -53,12 +53,12 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
         # Check again if daily low was lower than updater stop loss
         # This check must come after take profit price check
         if low <= curr_sl_price:
-            return curr_sl_price * 100 / buy_price
+            return curr_sl_price / buy_price
 
         last_price = close
 
     # Return profit
-    return last_price * 100 / buy_price
+    return last_price / buy_price
 
 
 def calc_trend(pre_interval, post_interval, debug=False):
@@ -85,6 +85,8 @@ def calc_trend(pre_interval, post_interval, debug=False):
 
 
 if __name__ == "__main__":
+    # TODO: test calc_profit
+
     pre_length = 150
     post_length = 20
     interval = generate_random_interval(length=pre_length + post_length)
@@ -97,6 +99,7 @@ if __name__ == "__main__":
 
     from plotly.graph_objects import Candlestick, Figure
     from plotly.offline import plot
+
     candlestick = Candlestick(x=np.arange(post_length),
                               open=post_interval_std[OPEN],
                               high=post_interval_std[HIGH],
@@ -107,5 +110,3 @@ if __name__ == "__main__":
     figure.add_shape(type="line", x0=0, y0=0, x1=post_length - 1, y1=trendline[-1],
                      line=dict(color='blue', width=2, dash="dot"))
     plot(figure)
-
-
