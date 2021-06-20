@@ -35,6 +35,48 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
     assert 1 < take_profit
 
     tp_price = buy_price * take_profit
+    sl_price = buy_price * stop_loss
+
+    for high, low, close in zip(post_interval[HIGH], post_interval[LOW], post_interval[CLOSE]):
+        # Pessimist calculation:
+        # Assumes daily low goes lower than the stop loss price before daily high goes higher than take profit price
+        if low <= sl_price:
+            return sl_price / buy_price
+        if high >= tp_price:
+            return tp_price / buy_price
+
+        last_price = close
+
+    # Return profit
+    return last_price / buy_price
+
+
+def calc_profit_with_trailing_loss(buy_price, post_interval, stop_loss, take_profit):
+    """
+    Calculates the investment return ratio of ...
+    -------
+    Parameters
+    buy_price : float
+        DESCRIPTION.
+    post_interval : ndarray
+        No. of days
+    stop_loss : float
+        Stop when option price falls below stop_loss ratio in percentage, 0% < stop_loss < 100%
+    take_profit : float
+    -------
+    Returns
+    profit: float
+    """
+    assert type(post_interval) is np.ndarray
+    assert post_interval.ndim == 2
+    assert post_interval.shape[0] == 4
+    assert post_interval.shape[1] > 1
+    assert post_interval.min() > 0
+    assert 0 < buy_price
+    assert 0 < stop_loss < 1
+    assert 1 < take_profit
+
+    tp_price = buy_price * take_profit
     curr_sl_price = buy_price * stop_loss
     delta_price = buy_price - curr_sl_price
 

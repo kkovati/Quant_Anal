@@ -44,7 +44,6 @@ def preprocess_dataset(pre_interval, post_interval, hyper_dict, trend_thres=None
     y_trend_thres = np.zeros((len(post_interval),))
     y_profit = np.zeros((len(post_interval),))
 
-    p('Prepare set')
     for i in tqdm(range(len(pre_interval))):
         # Calculate profit
         y_profit[i] = calc_profit(buy_price=pre_interval_sliced[i, CLOSE, -1],
@@ -61,8 +60,7 @@ def preprocess_dataset(pre_interval, post_interval, hyper_dict, trend_thres=None
     if trend_thres is None:
         trend_thres = find_threshold(y_trend, hyper_dict['trend_threshold'])
 
-    p('Threshold trend labels')
-    for i in tqdm(range(len(pre_interval))):
+    for i in range(len(pre_interval)):
         # Threshold trend labels
         y_trend_thres[i] = 1 if y_trend[i] >= trend_thres else 0
 
@@ -112,17 +110,20 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 
     p('Start Hyperparameter tuning')
     for i in range(n_tune_iteration):
-        p(f'{i + 1}/{n_tune_iteration} Hyperparameter settings')
+        p(f'--- {i + 1}/{n_tune_iteration} Hyperparameter settings ---')
         hyper_dict = init_random_hyperparameters()
 
+        p('Preprocess train set')
         retval = preprocess_dataset(pre_interval_train, post_interval_train, hyper_dict)
         X_train, y_trend_thres_train, y_profit_train, trend_thres = retval
 
         knn = fit_knn(X_train, y_trend_thres_train, hyper_dict)
 
+        p('Preprocess test set')
         retval = preprocess_dataset(pre_interval_test, post_interval_test, hyper_dict, trend_thres)
         X_test, y_trend_thres_test, y_profit_test, trend_thres = retval
 
+        p('Predict test set')
         y_pred = knn.predict(X_test)
         assert len(y_pred) == testset_size
         y_pred_proba = knn.predict_proba(X_test)
@@ -139,17 +140,26 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
                 sum_profit += 100
         avg_profit = sum_profit / testset_size
 
-        hyper_dict['AVG_PROFIT'] = avg_profit
-        hyper_dict['ACC'] = metrics.accuracy_score(y_trend_thres_test, y_pred)
-        hyper_dict['F1'] = metrics.f1_score(y_trend_thres_test, y_pred)
-        hyper_dict['MCC'] = metrics.matthews_corrcoef(y_trend_thres_test, y_pred)
-        hyper_dict['PREC'] = metrics.precision_score(y_trend_thres_test, y_pred)
-        hyper_dict['REC'] = metrics.recall_score(y_trend_thres_test, y_pred)
+        hyper_dict['0_AVG_PROFIT'] = avg_profit
+
+        # TODO: check conf matrix
         cm = metrics.confusion_matrix(y_trend_thres_test, y_pred)
-        cond_pos = cm[1, 1] + cm[1, 0]
-        cond_neg = cm[0, 0] + cm[0, 1]
-        hyper_dict['P/N'] = round(cond_pos / (cond_pos + cond_neg), 2)
-        hyper_dict['TP/TN/FN/FP'] = f'{str(cm[1, 1])}/{str(cm[0, 0])}/{str(cm[1, 0])}/{str(cm[0, 1])}'
+        cond_pos = cm[1, 1] + cm[1, 0]  # TP + FN
+        cond_neg = cm[0, 0] + cm[0, 1]  # TN + FP
+        hyper_dict['1_COND_POS/ALL'] = round(cond_pos / (cond_pos + cond_neg), 2)
+        pred_pos = cm[1, 1] + cm[0, 1]  # TP + FP
+        hyper_dict['2_PRED_POS/ALL'] = round(pred_pos / (cond_pos + cond_neg), 2)
+        hyper_dict['3_TP'] = cm[1, 1]
+        hyper_dict['4_TN'] = cm[0, 0]
+        hyper_dict['5_FN'] = cm[1, 0]
+        hyper_dict['6_FP'] = cm[0, 1]
+
+
+        hyper_dict['ACC'] = metrics.accuracy_score(y_trend_thres_test, y_pred)
+        # hyper_dict['F1'] = metrics.f1_score(y_trend_thres_test, y_pred)
+        # hyper_dict['MCC'] = metrics.matthews_corrcoef(y_trend_thres_test, y_pred)
+        # hyper_dict['PREC'] = metrics.precision_score(y_trend_thres_test, y_pred)
+        # hyper_dict['REC'] = metrics.recall_score(y_trend_thres_test, y_pred)
 
         df = df.append(hyper_dict, ignore_index=True, verify_integrity=True)
 
@@ -159,7 +169,12 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 
 
 if __name__ == '__main__':
-    hyperparameter_tuner(trainset_size=100,
-                         testset_size=100,
-                         n_tune_iteration=20,
-                         debug=True)
+    # hyperparameter_tuner(trainset_size=100,
+    #                      testset_size=100,
+    #                      n_tune_iteration=20,
+    #                      debug=True)
+
+    hyperparameter_tuner(trainset_size=100000,
+                         testset_size=5000,
+                         n_tune_iteration=10,
+                         debug=False)

@@ -18,14 +18,13 @@ class HSMDataset:
     """
     Huge_Stock_Market_Dataset parser class
     """
+
     def __init__(self, test_size, debug=False):
         self.path = 'D:/Kovacs_Attila/08_Programming/Python_projects/Quant_Anal/data/Huge_Stock_Market_Dataset/Stocks'
         self.files = [f for f in os.listdir(self.path)]
 
         if debug:
             self.files = self.files[:200]
-        else:
-            self.files = self.files
 
         dataframes = [None] * len(self.files)
 
@@ -123,7 +122,7 @@ class HSMDataset:
         symbol = full_interval.symbol
 
         if return_type == 'df':
-            # TODO - need to filter columns?
+            # TODO: need to filter columns?
             pre_interval = full_interval.iloc[:pre_len]
             pre_interval.symbol = symbol
 
