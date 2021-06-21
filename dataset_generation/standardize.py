@@ -50,7 +50,7 @@ def standardize_ndarray(array):
     if np.std(array) > 0:
         array /= np.std(array)
     else:
-        print('Warning: np.std(array) < 0 @ standardize_ndarray()')
+        print('\nWarning: np.std(array) < 0 @ standardize_ndarray()')
         print(array)
     return array
 

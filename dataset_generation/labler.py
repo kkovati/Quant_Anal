@@ -38,8 +38,8 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
     sl_price = buy_price * stop_loss
 
     for high, low, close in zip(post_interval[HIGH], post_interval[LOW], post_interval[CLOSE]):
-        # Pessimist calculation:
-        # Assumes daily low goes lower than the stop loss price before daily high goes higher than take profit price
+        if low <= sl_price and high >= tp_price:
+            return (sl_price + tp_price) / 2 / buy_price
         if low <= sl_price:
             return sl_price / buy_price
         if high >= tp_price:
@@ -47,7 +47,6 @@ def calc_profit(buy_price, post_interval, stop_loss, take_profit):
 
         last_price = close
 
-    # Return profit
     return last_price / buy_price
 
 

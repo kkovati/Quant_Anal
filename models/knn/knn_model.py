@@ -16,15 +16,12 @@ from dataset_generation.standardize import standardize
 def init_random_hyperparameters():
     hyperdict = {'pre_len': np.random.randint(10, 61),
                  'post_len': np.random.randint(3, 20),
-                 'trend_threshold': np.random.uniform(.01, .4),
-                 'profit_threshold': np.random.uniform(1.01, 1.08),
-                 'take_profit': 0,
+                 'trend_threshold': np.random.uniform(.1, .5),
+                 'take_profit': np.random.uniform(1.01, 1.12),
                  'stop_loss': np.random.uniform(.85, .99),
                  'n_neighbors': np.random.randint(1, 21),
                  'weights': np.random.choice(('uniform', 'distance')),
                  'minkowski_p': np.random.choice((1, 2))}
-
-    hyperdict['take_profit'] = np.random.uniform(hyperdict['profit_threshold'] + .01, 1.1)
 
     return hyperdict
 
@@ -125,14 +122,13 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 
         p('Predict test set')
         y_pred = knn.predict(X_test)
-        assert len(y_pred) == testset_size
         y_pred_proba = knn.predict_proba(X_test)
-        neigh_ind = knn.kneighbors(X_test)
+        # neigh_ind = knn.kneighbors(X_test)
 
         # Calculate average profit
         sum_profit = 0
+        assert len(y_pred) == len(y_profit_test) == testset_size
         for pred, profit in zip(y_pred, y_profit_test):
-            # print(profit)
             if pred == 1:
                 sum_profit += profit
             else:
@@ -140,23 +136,29 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
                 sum_profit += 100
         avg_profit = sum_profit / testset_size
 
-        hyper_dict['0_AVG_PROFIT'] = avg_profit
+        hyper_dict['01_AVG_PROFIT'] = round(avg_profit, 2)
 
-        # TODO: check conf matrix
-        cm = metrics.confusion_matrix(y_trend_thres_test, y_pred)
-        cond_pos = cm[1, 1] + cm[1, 0]  # TP + FN
-        cond_neg = cm[0, 0] + cm[0, 1]  # TN + FP
-        hyper_dict['1_COND_POS/ALL'] = round(cond_pos / (cond_pos + cond_neg), 2)
-        pred_pos = cm[1, 1] + cm[0, 1]  # TP + FP
-        hyper_dict['2_PRED_POS/ALL'] = round(pred_pos / (cond_pos + cond_neg), 2)
-        hyper_dict['3_TP'] = cm[1, 1]
-        hyper_dict['4_TN'] = cm[0, 0]
-        hyper_dict['5_FN'] = cm[1, 0]
-        hyper_dict['6_FP'] = cm[0, 1]
+        if y_trend_thres_test.min() == y_trend_thres_test.max() and y_pred.min() == y_pred.max():
+            tn, fp, fn, tp = testset_size, 0, 0, 0
+        else:
+            tn, fp, fn, tp = metrics.confusion_matrix(y_trend_thres_test, y_pred).ravel()
 
+        # Predicted condition positive (PP) over all instances
+        hyper_dict['02_PP/ALL'] = round((tp + fp) / (tn + fp + fn + tp), 2)
+        # Positive predictive value (PPV)
+        if tp + fp > 0:
+            hyper_dict['03_TP/PP'] = round(tp / (tp + fp), 2)
+        else:
+            hyper_dict['03_TP/PP'] = np.nan
+        # Actual condition positive (P) over all instances
+        hyper_dict['04_P/ALL'] = round((tp + fn) / (tn + fp + fn + tp), 2)
+        hyper_dict['05_TP'] = tp
+        hyper_dict['06_FP'] = fp
+        hyper_dict['07_FN'] = fn
+        hyper_dict['08_TN'] = tn
 
-        hyper_dict['ACC'] = metrics.accuracy_score(y_trend_thres_test, y_pred)
-        # hyper_dict['F1'] = metrics.f1_score(y_trend_thres_test, y_pred)
+        hyper_dict['09_ACC'] = round(metrics.accuracy_score(y_trend_thres_test, y_pred), 2)
+        hyper_dict['10_F1'] = round(metrics.f1_score(y_trend_thres_test, y_pred), 2)
         # hyper_dict['MCC'] = metrics.matthews_corrcoef(y_trend_thres_test, y_pred)
         # hyper_dict['PREC'] = metrics.precision_score(y_trend_thres_test, y_pred)
         # hyper_dict['REC'] = metrics.recall_score(y_trend_thres_test, y_pred)
