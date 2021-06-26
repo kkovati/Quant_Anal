@@ -31,9 +31,10 @@ def tech_anal_input_compiler(pre_interval):
     name_ind_dimless = []
     value_ind_dimless = []
 
-    days = (3, 4, 5, 7, 8, 10, 12, 15, 20, 25, 30, 40, 50)
+    days = (2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 20, 25, 26, 30, 40, 50)
 
     # Daily Prices
+
     for i in range(-1, -6, -1):
         name_ind_price_dim.append(f'OPEN_{i}')
         value_ind_price_dim.append(open[i])
@@ -47,59 +48,93 @@ def tech_anal_input_compiler(pre_interval):
     # Overlap Studies Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/overlap_studies.html
 
-    upperband, middleband, lowerband = talib.BBANDS(close, timeperiod=5, nbdevup=2, nbdevdn=2, matype=0)
-    # nbdevup/nbdevdn -> Deviation multiplier for upper/lower band
-    name_ind_price_dim.append('BBANDS_5_2_2_0_upper')
-    value_ind_price_dim.append(upperband[-1])
-    name_ind_price_dim.append('BBANDS_5_2_2_0_middle')
-    value_ind_price_dim.append(middleband[-1])
-    name_ind_price_dim.append('BBANDS_5_2_2_0_lower')
-    value_ind_price_dim.append(lowerband[-1])
+    for i in days:
+        upperband, middleband, lowerband = talib.BBANDS(close, timeperiod=i, nbdevup=2, nbdevdn=2, matype=0)
+        # nbdevup/nbdevdn -> Deviation multiplier for upper/lower band
+        name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_upper')
+        value_ind_price_dim.append(upperband[-1])
+        name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_middle')
+        value_ind_price_dim.append(middleband[-1])
+        name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_lower')
+        value_ind_price_dim.append(lowerband[-1])
 
-    real = talib.DEMA(close, timeperiod=30)
-    name_ind_price_dim.append('DEMA_30')
-    value_ind_price_dim.append(real[-1])
+    for i in days:
+        real = talib.DEMA(close, timeperiod=i)
+        name_ind_price_dim.append(f'DEMA_{i}')
+        value_ind_price_dim.append(real[-1])
 
     for i in days:
         real = talib.EMA(close, timeperiod=i)
         name_ind_price_dim.append(f'EMA_{i}')
         value_ind_price_dim.append(real[-1])
 
-    real = talib.HT_TRENDLINE(close)
-    name_ind_price_dim.append('HT_TRENDLINE')
-    value_ind_price_dim.append(real[-1])
+    for i in days:
+        real = talib.HT_TRENDLINE(close)
+        name_ind_price_dim.append(f'HT_TRENDLINE_{i}')
+        value_ind_price_dim.append(real[-1])
 
-    real = talib.KAMA(close, timeperiod=30)
-    name_ind_price_dim.append('KAMA_30')
-    value_ind_price_dim.append(real[-1])
+    for i in days:
+        real = talib.KAMA(close, timeperiod=i)
+        name_ind_price_dim.append(f'KAMA_{i}')
+        value_ind_price_dim.append(real[-1])
 
-    real = talib.MA(close, timeperiod=30, matype=0)
-    name_ind_price_dim.append('MA_30_0')
-    value_ind_price_dim.append(real[-1])
+    for i in days:
+        real = talib.MA(close, timeperiod=i, matype=0)
+        name_ind_price_dim.append(f'MA_{i}_0')
+        value_ind_price_dim.append(real[-1])
 
-    real = talib.SMA(close, timeperiod=30)
-    name_ind_price_dim.append('SMA_30')
-    value_ind_price_dim.append(real[-1])
+    for i in days:
+        real = talib.SMA(close, timeperiod=i)
+        name_ind_price_dim.append(f'SMA_{i}')
+        value_ind_price_dim.append(real[-1])
+
+    for i in days:
+        real = talib.TEMA(close, timeperiod=i)
+        name_ind_price_dim.append(f'TEMA_{i}')
+        value_ind_price_dim.append(real[-1])
+
+    for i in days:
+        real = talib.TRIMA(close, timeperiod=i)
+        name_ind_price_dim.append(f'TRIMA_{i}')
+        value_ind_price_dim.append(real[-1])
+
+    for i in days:
+        real = talib.WMA(close, timeperiod=i)
+        name_ind_price_dim.append(f'WMA_{i}')
+        value_ind_price_dim.append(real[-1])
+
+    # Calculate deltas of indicators with price dimension
+    assert len(name_ind_price_dim) == len(value_ind_price_dim)
+    for i in range(len(name_ind_price_dim)):
+        for j in range(i + 1, len(name_ind_price_dim)):
+            name_ind_price_dim.append(f'{name_ind_price_dim}') # TODO: WIP
+            value_ind_price_dim.append(real[-1])
+
 
     # Momentum Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/momentum_indicators.html
 
-    real = talib.ADX(high, low, close, timeperiod=14)
-    name_ind_dimless.append('ADX_14')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.ADX(high, low, close, timeperiod=i)
+        name_ind_dimless.append(f'ADX_{i}')
+        value_ind_dimless.append(real[-1])
 
-    aroondown, aroonup = talib.AROON(high, low, timeperiod=14)
-    name_ind_dimless.append('AROON_14')
-    value_ind_dimless.append(real[-1])
-    # TODO: AARON UP and DOWN difference must be present (often 25 period) + crossover?
+    for i in days:
+        aroondown, aroonup = talib.AROON(high, low, timeperiod=i)
+        name_ind_dimless.append(f'AROON_DOWN_{i}')
+        value_ind_dimless.append(aroondown[-1])
+        name_ind_dimless.append(f'AROON_UP_{i}')
+        value_ind_dimless.append(aroonup[-1])
+        # TODO: AARON UP and DOWN difference must be present (often 25 period) + crossover?
 
     real = talib.BOP(open, high, low, close)
     name_ind_dimless.append('BOP')
     value_ind_dimless.append(real[-1])
 
-    real = talib.CCI(high, low, close, timeperiod=14)
-    name_ind_dimless.append('CCI_14')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.CCI(high, low, close, timeperiod=i)
+        name_ind_dimless.append(f'CCI_{i}')
+        value_ind_dimless.append(real[-1])
 
     macd, macdsignal, macdhist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
     name_ind_dimless.append('MACD_12_26_9')
@@ -109,17 +144,20 @@ def tech_anal_input_compiler(pre_interval):
     name_ind_dimless.append('MACDHIST_12_26_9')
     value_ind_dimless.append(macdhist[-1])
 
-    real = talib.MOM(close, timeperiod=10)
-    name_ind_dimless.append('MOM_10')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.MOM(close, timeperiod=i)
+        name_ind_dimless.append(f'MOM_{i}')
+        value_ind_dimless.append(real[-1])
 
-    real = talib.ROC(close, timeperiod=10)
-    name_ind_dimless.append('ROC_10')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.ROC(close, timeperiod=i)
+        name_ind_dimless.append(f'ROC_{i}')
+        value_ind_dimless.append(real[-1])
 
-    real = talib.RSI(close, timeperiod=14)
-    name_ind_dimless.append('RSI_14')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.RSI(close, timeperiod=i)
+        name_ind_dimless.append(f'RSI_{i}')
+        value_ind_dimless.append(real[-1])
 
     slowk, slowd = talib.STOCH(high, low, close, fastk_period=5, slowk_period=3, slowk_matype=0, slowd_period=3,
                                slowd_matype=0)
@@ -134,17 +172,19 @@ def tech_anal_input_compiler(pre_interval):
     name_ind_dimless.append('STOCHRSI_14_5_3_0_fastd')
     value_ind_dimless.append(fastd[-1])
 
-    real = talib.TRIX(close, timeperiod=30)
-    name_ind_dimless.append('TRIX_30')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.TRIX(close, timeperiod=i)
+        name_ind_dimless.append(f'TRIX_{i}')
+        value_ind_dimless.append(real[-1])
 
     real = talib.ULTOSC(high, low, close, timeperiod1=7, timeperiod2=14, timeperiod3=28)
     name_ind_dimless.append('ULTOSC_7_14_28')
     value_ind_dimless.append(real[-1])
 
-    real = talib.WILLR(high, low, close, timeperiod=14)
-    name_ind_dimless.append('WILLR_14')
-    value_ind_dimless.append(real[-1])
+    for i in days:
+        real = talib.WILLR(high, low, close, timeperiod=i)
+        name_ind_dimless.append(f'WILLR_{i}')
+        value_ind_dimless.append(real[-1])
 
     # Volume Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/volume_indicators.html
