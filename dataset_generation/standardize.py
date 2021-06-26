@@ -49,9 +49,9 @@ def standardize_ndarray(array):
     array -= np.mean(array)
     if np.std(array) > 0:
         array /= np.std(array)
-    else:
-        print('\nWarning: np.std(array) < 0 @ standardize_ndarray()')
-        print(array)
+    # else: # TODO: this situation happens even it was filtered, because slicing smaller parts
+        # print('\nWarning: np.std(array) < 0 @ standardize_ndarray()')
+        # print(array)
     return array
 
 

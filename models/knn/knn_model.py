@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import sklearn.metrics as metrics
 from sklearn.neighbors import KNeighborsClassifier
+import time
 from tqdm import tqdm
 
 from dataset_generation.dataset_analyzation import find_threshold
@@ -16,13 +17,12 @@ from dataset_generation.standardize import standardize
 def init_random_hyperparameters():
     hyperdict = {'pre_len': np.random.randint(10, 61),
                  'post_len': np.random.randint(3, 20),
-                 'trend_threshold': np.random.uniform(.1, .5),
-                 'take_profit': np.random.uniform(1.01, 1.12),
-                 'stop_loss': np.random.uniform(.85, .99),
+                 'trend_threshold': np.random.uniform(.2, .6),
+                 'take_profit': np.random.uniform(1.02, 1.15),
+                 'stop_loss': np.random.uniform(.9, .99),
                  'n_neighbors': np.random.randint(1, 21),
                  'weights': np.random.choice(('uniform', 'distance')),
                  'minkowski_p': np.random.choice((1, 2))}
-
     return hyperdict
 
 
@@ -76,9 +76,6 @@ def fit_knn(X_train, y_train, hyper_dict, visualization=False):
                                p=hyper_dict['minkowski_p'])
     knn.fit(X_train, y_train)
 
-    # Evaluate
-    # print(f'Accuracy: {knn.score(X_test, y_test)}')
-
     if visualization:
         pass
         # Show first test sample and closest neighbours
@@ -107,7 +104,7 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 
     p('Start Hyperparameter tuning')
     for i in range(n_tune_iteration):
-        p(f'--- {i + 1}/{n_tune_iteration} Hyperparameter settings ---')
+        p(f'\n--- {i + 1}/{n_tune_iteration} Hyperparameter settings ---')
         hyper_dict = init_random_hyperparameters()
 
         p('Preprocess train set')
@@ -120,23 +117,50 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
         retval = preprocess_dataset(pre_interval_test, post_interval_test, hyper_dict, trend_thres)
         X_test, y_trend_thres_test, y_profit_test, trend_thres = retval
 
+        start_time = time.time()
         p('Predict test set')
         y_pred = knn.predict(X_test)
-        y_pred_proba = knn.predict_proba(X_test)
+        # y_pred_proba = knn.predict_proba(X_test)
         # neigh_ind = knn.kneighbors(X_test)
+        p('Prediction time: ' + str(round(time.time() - start_time)) + ' sec')
 
         # Calculate average profit
-        sum_profit = 0
+        avg_profit, avg_win, avg_loose, avg_miss = 0.0, 0.0, 0.0, 0.0
+        net_profit, net_miss = 1.0, 1.0
+        trade_counter, win_counter, loose_counter, miss_counter = 0, 0, 0, 0
         assert len(y_pred) == len(y_profit_test) == testset_size
         for pred, profit in zip(y_pred, y_profit_test):
             if pred == 1:
-                sum_profit += profit
+                avg_profit += profit
+                net_profit *= profit
+                trade_counter += 1
+                if profit > 1:
+                    avg_win += profit
+                    win_counter += 1
+                else:
+                    avg_loose += profit
+                    loose_counter += 1
             else:
                 assert pred == 0
-                sum_profit += 100
-        avg_profit = sum_profit / testset_size
-
-        hyper_dict['01_AVG_PROFIT'] = round(avg_profit, 2)
+                avg_miss += profit
+                net_miss *= profit
+                miss_counter += 1
+        assert np.count_nonzero(y_pred == 1) == trade_counter
+        assert np.count_nonzero(y_pred == 0) == miss_counter
+        if trade_counter != 0:
+            avg_profit /= trade_counter
+        if win_counter != 0:
+            avg_win /= win_counter
+        if loose_counter != 0:
+            avg_loose /= loose_counter
+        if miss_counter != 0:
+            avg_miss /= miss_counter
+        hyper_dict['01_AVG_PROFIT'] = round(avg_profit, 4)
+        hyper_dict['01_AVG_WIN'] = round(avg_win, 4)
+        hyper_dict['01_AVG_LOOSE'] = round(avg_loose, 4)
+        hyper_dict['01_NET_PROFIT'] = round(net_profit, 4)
+        hyper_dict['01_AVG_MISS'] = round(avg_miss, 4)
+        hyper_dict['01_NET_MISS'] = round(net_miss, 4)
 
         if y_trend_thres_test.min() == y_trend_thres_test.max() and y_pred.min() == y_pred.max():
             tn, fp, fn, tp = testset_size, 0, 0, 0
@@ -171,12 +195,16 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 
 
 if __name__ == '__main__':
-    # hyperparameter_tuner(trainset_size=100,
-    #                      testset_size=100,
-    #                      n_tune_iteration=20,
-    #                      debug=True)
+    start_time = time.time()
 
-    hyperparameter_tuner(trainset_size=100000,
-                         testset_size=5000,
+    hyperparameter_tuner(trainset_size=500,
+                         testset_size=500,
                          n_tune_iteration=10,
-                         debug=False)
+                         debug=True)
+
+    # hyperparameter_tuner(trainset_size=100000,
+    #                      testset_size=5000,
+    #                      n_tune_iteration=50,
+    #                      debug=False)
+
+    print('\nTotal running time: ', round(time.time() - start_time), ' sec')
