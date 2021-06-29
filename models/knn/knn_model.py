@@ -1,3 +1,4 @@
+from backtesting import Backtest
 from logging import info as p
 import numpy as np
 import pandas as pd
@@ -12,13 +13,15 @@ from dataset_generation.hsm_dataset import generate_dataset
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
 from dataset_generation.labler import calc_profit, calc_trend
 from dataset_generation.standardize import standardize
+from models.knn.eval_backtesting import KnnStartegy
 
 
 def init_random_hyperparameters():
     tp_sl_ratio = np.random.uniform(1.1, 3)  # take profit / stop loss ratio
     stop_loss = np.random.uniform(0.01, 0.1)
     take_profit = stop_loss * tp_sl_ratio
-    hyperdict = {'pre_len': np.random.randint(10, 61),
+    hyperdict = {'pre_len_max': 60,
+                 'pre_len': np.random.randint(10, 61),
                  'post_len': np.random.randint(3, 20),
                  'trend_threshold': np.random.uniform(.2, .6),
                  'tp_sl_ratio': tp_sl_ratio,
@@ -100,6 +103,24 @@ def fit_knn(X_train, y_train, hyper_dict, visualization=False):
     return knn
 
 
+def eval_backtesting(model, hyper_dict):
+    df = pd.read_csv('Binance_BTCUSDT_1h.csv')
+
+    df['Open'] = df['open']
+    df['High'] = df['high']
+    df['Low'] = df['low']
+    df['Close'] = df['close']
+
+    df.set_index('date')
+    df = df.iloc[::-1].reset_index()
+
+    bt = Backtest(df, KnnStartegy, cash=10000, commission=.002)
+
+    results = bt.run(model=model, hyper_dict=hyper_dict)
+    # bt.plot()
+    return results
+
+
 def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=False):
     retval = generate_dataset(trainset_size, testset_size, 61, 20, debug=debug)
     pre_interval_train, post_interval_train, pre_interval_test, post_interval_test = retval
@@ -159,37 +180,49 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
             avg_loose /= loose_counter
         if miss_counter != 0:
             avg_miss /= miss_counter
-        hyper_dict['01_AVG_PROFIT'] = round(avg_profit, 4)
-        hyper_dict['01_AVG_WIN'] = round(avg_win, 4)
-        hyper_dict['01_AVG_LOOSE'] = round(avg_loose, 4)
-        hyper_dict['01_NET_PROFIT'] = round(net_profit, 4)
-        hyper_dict['01_AVG_MISS'] = round(avg_miss, 4)
-        hyper_dict['01_NET_MISS'] = round(net_miss, 4)
+        # hyper_dict['01_AVG_PROFIT'] = round(avg_profit, 4)
+        # hyper_dict['01_AVG_WIN'] = round(avg_win, 4)
+        # hyper_dict['01_AVG_LOOSE'] = round(avg_loose, 4)
+        # hyper_dict['01_NET_PROFIT'] = round(net_profit, 4)
+        # hyper_dict['01_AVG_MISS'] = round(avg_miss, 4)
+        # hyper_dict['01_NET_MISS'] = round(net_miss, 4)
 
-        if y_trend_thres_test.min() == y_trend_thres_test.max() and y_pred.min() == y_pred.max():
-            tn, fp, fn, tp = testset_size, 0, 0, 0
-        else:
-            tn, fp, fn, tp = metrics.confusion_matrix(y_trend_thres_test, y_pred).ravel()
+        # if y_trend_thres_test.min() == y_trend_thres_test.max() and y_pred.min() == y_pred.max():
+        #     tn, fp, fn, tp = testset_size, 0, 0, 0
+        # else:
+        #     tn, fp, fn, tp = metrics.confusion_matrix(y_trend_thres_test, y_pred).ravel()
 
         # Predicted condition positive (PP) over all instances
-        hyper_dict['02_PP/ALL'] = round((tp + fp) / (tn + fp + fn + tp), 2)
+        # hyper_dict['02_PP/ALL'] = round((tp + fp) / (tn + fp + fn + tp), 2)
         # Positive predictive value (PPV)
-        if tp + fp > 0:
-            hyper_dict['03_TP/PP'] = round(tp / (tp + fp), 2)
-        else:
-            hyper_dict['03_TP/PP'] = np.nan
+        # if tp + fp > 0:
+        #     hyper_dict['03_TP/PP'] = round(tp / (tp + fp), 2)
+        # else:
+        #     hyper_dict['03_TP/PP'] = np.nan
         # Actual condition positive (P) over all instances
-        hyper_dict['04_P/ALL'] = round((tp + fn) / (tn + fp + fn + tp), 2)
-        hyper_dict['05_TP'] = tp
-        hyper_dict['06_FP'] = fp
-        hyper_dict['07_FN'] = fn
-        hyper_dict['08_TN'] = tn
-
-        hyper_dict['09_ACC'] = round(metrics.accuracy_score(y_trend_thres_test, y_pred), 2)
-        hyper_dict['10_F1'] = round(metrics.f1_score(y_trend_thres_test, y_pred), 2)
+        # hyper_dict['04_P/ALL'] = round((tp + fn) / (tn + fp + fn + tp), 2)
+        # hyper_dict['05_TP'] = tp
+        # hyper_dict['06_FP'] = fp
+        # hyper_dict['07_FN'] = fn
+        # hyper_dict['08_TN'] = tn
+        #
+        # hyper_dict['09_ACC'] = round(metrics.accuracy_score(y_trend_thres_test, y_pred), 2)
+        # hyper_dict['10_F1'] = round(metrics.f1_score(y_trend_thres_test, y_pred), 2)
         # hyper_dict['MCC'] = metrics.matthews_corrcoef(y_trend_thres_test, y_pred)
         # hyper_dict['PREC'] = metrics.precision_score(y_trend_thres_test, y_pred)
         # hyper_dict['REC'] = metrics.recall_score(y_trend_thres_test, y_pred)
+
+        start_time = time.time()
+        p('Backtesting')
+        results = eval_backtesting(knn, hyper_dict)
+        p('Testing time: ' + str(round(time.time() - start_time)) + ' sec')
+
+        for i in results.index:
+            # print(i)
+            # print(results[i])
+            if i == '_equity_curve':
+                break
+            hyper_dict[i] = results[i]
 
         df = df.append(hyper_dict, ignore_index=True, verify_integrity=True)
 
@@ -201,14 +234,14 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 if __name__ == '__main__':
     start_time = time.time()
 
-    # hyperparameter_tuner(trainset_size=500,
-    #                      testset_size=500,
-    #                      n_tune_iteration=10,
-    #                      debug=True)
+    hyperparameter_tuner(trainset_size=500,
+                         testset_size=500,
+                         n_tune_iteration=10,
+                         debug=True)
 
-    hyperparameter_tuner(trainset_size=100000,
-                         testset_size=5000,
-                         n_tune_iteration=30,
-                         debug=False)
+    # hyperparameter_tuner(trainset_size=100000,
+    #                      testset_size=10,
+    #                      n_tune_iteration=30,
+    #                      debug=False)
 
     print('\nTotal running time: ', round(time.time() - start_time), ' sec')
