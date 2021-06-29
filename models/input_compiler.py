@@ -35,7 +35,7 @@ def tech_anal_input_compiler(pre_interval):
 
     # Daily Prices
 
-    for i in range(-1, -6, -1):
+    for i in range(-1, -8, -1):
         name_ind_price_dim.append(f'OPEN_{i}')
         value_ind_price_dim.append(open[i])
         name_ind_price_dim.append(f'HIGH_{i}')
@@ -107,9 +107,8 @@ def tech_anal_input_compiler(pre_interval):
     assert len(name_ind_price_dim) == len(value_ind_price_dim)
     for i in range(len(name_ind_price_dim)):
         for j in range(i + 1, len(name_ind_price_dim)):
-            name_ind_price_dim.append(f'{name_ind_price_dim}') # TODO: WIP
-            value_ind_price_dim.append(real[-1])
-
+            name_ind_price_dim.append(f'{name_ind_price_dim[i]}-{name_ind_price_dim[j]}')
+            value_ind_price_dim.append(value_ind_price_dim[i] - value_ind_price_dim[j])
 
     # Momentum Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/momentum_indicators.html
@@ -119,13 +118,21 @@ def tech_anal_input_compiler(pre_interval):
         name_ind_dimless.append(f'ADX_{i}')
         value_ind_dimless.append(real[-1])
 
+    for i in range(len(days)):
+        for j in range(i + 1, len(days)):
+            real = talib.APO(close, fastperiod=days[i], slowperiod=days[j], matype=0)
+            name_ind_dimless.append(f'APO_{i}_{j}')
+            value_ind_dimless.append(real[-1])
+
     for i in days:
         aroondown, aroonup = talib.AROON(high, low, timeperiod=i)
         name_ind_dimless.append(f'AROON_DOWN_{i}')
         value_ind_dimless.append(aroondown[-1])
         name_ind_dimless.append(f'AROON_UP_{i}')
         value_ind_dimless.append(aroonup[-1])
-        # TODO: AARON UP and DOWN difference must be present (often 25 period) + crossover?
+        name_ind_dimless.append(f'AROON_UP_{i}-AROON_DOWN_{i}')
+        value_ind_dimless.append(aroonup[-1] - aroondown[-1])
+        # TODO: crossover?
 
     real = talib.BOP(open, high, low, close)
     name_ind_dimless.append('BOP')
@@ -136,13 +143,16 @@ def tech_anal_input_compiler(pre_interval):
         name_ind_dimless.append(f'CCI_{i}')
         value_ind_dimless.append(real[-1])
 
-    macd, macdsignal, macdhist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
-    name_ind_dimless.append('MACD_12_26_9')
-    value_ind_dimless.append(macd[-1])
-    name_ind_dimless.append('MACDSIGNAL_12_26_9')
-    value_ind_dimless.append(macdsignal[-1])
-    name_ind_dimless.append('MACDHIST_12_26_9')
-    value_ind_dimless.append(macdhist[-1])
+    for i in range(len(days)):
+        for j in range(i + 1, len(days)):
+            for k in range(k + 1, len(days)):
+                macd, macdsignal, macdhist = talib.MACD(close, fastperiod=j, slowperiod=k, signalperiod=i)
+                name_ind_dimless.append(f'MACD_{j}_{k}_{i}')
+                value_ind_dimless.append(macd[-1])
+                name_ind_dimless.append(f'MACDSIGNAL_{j}_{k}_{i}')
+                value_ind_dimless.append(macdsignal[-1])
+                name_ind_dimless.append(f'MACDHIST_{j}_{k}_{i}')
+                value_ind_dimless.append(macdhist[-1])
 
     for i in days:
         real = talib.MOM(close, timeperiod=i)
@@ -177,9 +187,12 @@ def tech_anal_input_compiler(pre_interval):
         name_ind_dimless.append(f'TRIX_{i}')
         value_ind_dimless.append(real[-1])
 
-    real = talib.ULTOSC(high, low, close, timeperiod1=7, timeperiod2=14, timeperiod3=28)
-    name_ind_dimless.append('ULTOSC_7_14_28')
-    value_ind_dimless.append(real[-1])
+    for i in range(len(days)):
+        for j in range(i + 1, len(days)):
+            for k in range(k + 1, len(days)):
+                real = talib.ULTOSC(high, low, close, timeperiod1=i, timeperiod2=j, timeperiod3=k)
+                name_ind_dimless.append(f'ULTOSC_{i}_{j}_{k}')
+                value_ind_dimless.append(real[-1])
 
     for i in days:
         real = talib.WILLR(high, low, close, timeperiod=i)
@@ -194,44 +207,46 @@ def tech_anal_input_compiler(pre_interval):
     # Price Transform Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/price_transform.html
 
-    real = talib.AVGPRICE(open, high, low, close)
-    indicators.append('AVGPRICE')
-    X.append(real[-1])
-
-    real = talib.MEDPRICE(high, low)
-    indicators.append('MEDPRICE')
-    X.append(real[-1])
-
-    real = talib.WCLPRICE(high, low, close)
-    indicators.append('WCLPRICE')
-    X.append(real[-1])
+    # real = talib.AVGPRICE(open, high, low, close)
+    # indicators.append('AVGPRICE')
+    # X.append(real[-1])
+    #
+    # real = talib.MEDPRICE(high, low)
+    # indicators.append('MEDPRICE')
+    # X.append(real[-1])
+    #
+    # real = TYPPRICE(high, low, close)
+    #
+    # real = talib.WCLPRICE(high, low, close)
+    # indicators.append('WCLPRICE')
+    # X.append(real[-1])
 
     # Cycle Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/cycle_indicators.html
 
-    sine, leadsine = talib.HT_SINE(close)
-    indicators.append('HT_SINE_sine')
-    X.append(sine[-1])
-    indicators.append('WCLPRICE_leadsine')
-    X.append(leadsine[-1])
+    # sine, leadsine = talib.HT_SINE(close)
+    # indicators.append('HT_SINE_sine')
+    # X.append(sine[-1])
+    # indicators.append('WCLPRICE_leadsine')
+    # X.append(leadsine[-1])
 
     # Pattern Recognition Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/pattern_recognition.html
 
-    integer = talib.CDLDOJI(open, high, low, close)
-    indicators.append('CDLDOJI')
-    X.append(float(integer[-1]))
+    # integer = talib.CDLDOJI(open, high, low, close)
+    # indicators.append('CDLDOJI')
+    # X.append(float(integer[-1]))
 
     # Statistic Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/statistic_functions.html
 
-    real = talib.BETA(high, low, timeperiod=5)
-    indicators.append('BETA_5')
-    X.append(real[-1])
-
-    real = talib.VAR(close, timeperiod=5, nbdev=1)
-    indicators.append('VAR_5_1')
-    X.append(real[-1])
+    # real = talib.BETA(high, low, timeperiod=5)
+    # indicators.append('BETA_5')
+    # X.append(real[-1])
+    #
+    # real = talib.VAR(close, timeperiod=5, nbdev=1)
+    # indicators.append('VAR_5_1')
+    # X.append(real[-1])
 
     # Math Transform Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/math_transform.html
@@ -239,16 +254,22 @@ def tech_anal_input_compiler(pre_interval):
     # Math Operator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/math_operators.html
 
-    # Check X
-    for x, i in zip(X, indicators):
-        assert isinstance(x, float), f'{i} is not float'
-        assert isinstance(i, str), f'{i} is not string'
+    # Check indicators with price dimension
+    for name, value in zip(name_ind_price_dim, value_ind_price_dim):
+        assert isinstance(name, str), f'{i} is not string'
+        assert isinstance(value, float), f'{i} is not float'
 
-    X = np.array(X)
+    # Check dimensionless indicators
+    for name, value in zip(name_ind_dimless, value_ind_dimless):
+        assert isinstance(name, str), f'{i} is not string'
+        assert isinstance(value, float), f'{i} is not float'
+
+    X_indicators = None  # np.array(X)
+    name_indiactors = None
 
     # assert isinstance(X.dtype, np.float64)
 
-    return X, indicators
+    return X_indicators, name_indiactors
 
 
 if __name__ == '__main__':

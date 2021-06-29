@@ -15,11 +15,15 @@ from dataset_generation.standardize import standardize
 
 
 def init_random_hyperparameters():
+    tp_sl_ratio = np.random.uniform(1.1, 3)  # take profit / stop loss ratio
+    stop_loss = np.random.uniform(0.01, 0.1)
+    take_profit = stop_loss * tp_sl_ratio
     hyperdict = {'pre_len': np.random.randint(10, 61),
                  'post_len': np.random.randint(3, 20),
                  'trend_threshold': np.random.uniform(.2, .6),
-                 'take_profit': np.random.uniform(1.02, 1.15),
-                 'stop_loss': np.random.uniform(.9, .99),
+                 'tp_sl_ratio': tp_sl_ratio,
+                 'stop_loss': 1 - stop_loss,
+                 'take_profit': 1 + take_profit,
                  'n_neighbors': np.random.randint(1, 21),
                  'weights': np.random.choice(('uniform', 'distance')),
                  'minkowski_p': np.random.choice((1, 2))}
@@ -197,14 +201,14 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 if __name__ == '__main__':
     start_time = time.time()
 
-    hyperparameter_tuner(trainset_size=500,
-                         testset_size=500,
-                         n_tune_iteration=10,
-                         debug=True)
+    # hyperparameter_tuner(trainset_size=500,
+    #                      testset_size=500,
+    #                      n_tune_iteration=10,
+    #                      debug=True)
 
-    # hyperparameter_tuner(trainset_size=100000,
-    #                      testset_size=5000,
-    #                      n_tune_iteration=50,
-    #                      debug=False)
+    hyperparameter_tuner(trainset_size=100000,
+                         testset_size=5000,
+                         n_tune_iteration=30,
+                         debug=False)
 
     print('\nTotal running time: ', round(time.time() - start_time), ' sec')
