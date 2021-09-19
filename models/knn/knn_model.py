@@ -234,14 +234,14 @@ def hyperparameter_tuner(trainset_size, testset_size, n_tune_iteration, debug=Fa
 if __name__ == '__main__':
     start_time = time.time()
 
-    hyperparameter_tuner(trainset_size=500,
-                         testset_size=500,
-                         n_tune_iteration=10,
-                         debug=True)
+    # hyperparameter_tuner(trainset_size=500,
+    #                      testset_size=500,
+    #                      n_tune_iteration=10,
+    #                      debug=True)
 
-    # hyperparameter_tuner(trainset_size=100000,
-    #                      testset_size=10,
-    #                      n_tune_iteration=30,
-    #                      debug=False)
+    hyperparameter_tuner(trainset_size=100000,
+                         testset_size=10,
+                         n_tune_iteration=3,
+                         debug=False)
 
     print('\nTotal running time: ', round(time.time() - start_time), ' sec')

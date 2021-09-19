@@ -1,10 +1,12 @@
+from logging import info as p
 import pandas_datareader.data as web
 import pandas as pd
 import numpy as np
 import talib
-from talib import RSI, BBANDS, STOCHRSI, STOCHF, STOCH
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 
+from dataset_generation.hsm_dataset import generate_dataset
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
 from dataset_generation.random_timeseries import generate_random_interval
 from dataset_generation.standardize import standardize
@@ -16,7 +18,13 @@ from dataset_generation.standardize import standardize
 
 # https://towardsdatascience.com/trading-strategy-technical-analysis-with-python-ta-lib-3ce9d6ce5614
 
-def tech_anal_input_compiler(pre_interval):
+def compile_tech_anal_single_interval(pre_interval, names=False):
+    assert isinstance(pre_interval, np.ndarray)
+    assert pre_interval.ndim == 2
+    assert pre_interval.shape[0] == 4
+
+    # TODO: add option to disable name generation
+
     pre_interval = standardize(np.copy(pre_interval))
     open = pre_interval[OPEN]
     high = pre_interval[HIGH]
@@ -105,8 +113,9 @@ def tech_anal_input_compiler(pre_interval):
 
     # Calculate deltas of indicators with price dimension
     assert len(name_ind_price_dim) == len(value_ind_price_dim)
-    for i in range(len(name_ind_price_dim)):
-        for j in range(i + 1, len(name_ind_price_dim)):
+    original_length = len(name_ind_price_dim)
+    for i in range(original_length):
+        for j in range(i + 1, original_length):
             name_ind_price_dim.append(f'{name_ind_price_dim[i]}-{name_ind_price_dim[j]}')
             value_ind_price_dim.append(value_ind_price_dim[i] - value_ind_price_dim[j])
 
@@ -145,13 +154,14 @@ def tech_anal_input_compiler(pre_interval):
 
     for i in range(len(days)):
         for j in range(i + 1, len(days)):
-            for k in range(k + 1, len(days)):
-                macd, macdsignal, macdhist = talib.MACD(close, fastperiod=j, slowperiod=k, signalperiod=i)
-                name_ind_dimless.append(f'MACD_{j}_{k}_{i}')
+            for k in range(j + 1, len(days)):
+                macd, macdsignal, macdhist = talib.MACD(close, fastperiod=days[j], slowperiod=days[k],
+                                                        signalperiod=days[i])
+                name_ind_dimless.append(f'MACD_{days[j]}_{days[k]}_{days[i]}')
                 value_ind_dimless.append(macd[-1])
-                name_ind_dimless.append(f'MACDSIGNAL_{j}_{k}_{i}')
+                name_ind_dimless.append(f'MACDSIGNAL_{days[j]}_{days[k]}_{days[i]}')
                 value_ind_dimless.append(macdsignal[-1])
-                name_ind_dimless.append(f'MACDHIST_{j}_{k}_{i}')
+                name_ind_dimless.append(f'MACDHIST_{days[j]}_{days[k]}_{days[i]}')
                 value_ind_dimless.append(macdhist[-1])
 
     for i in days:
@@ -264,18 +274,36 @@ def tech_anal_input_compiler(pre_interval):
         assert isinstance(name, str), f'{i} is not string'
         assert isinstance(value, float), f'{i} is not float'
 
-    X_indicators = None  # np.array(X)
-    name_indiactors = None
+    value_ind = np.array(value_ind_price_dim + value_ind_dimless)
+    name_ind = name_ind_price_dim + name_ind_dimless
 
-    # assert isinstance(X.dtype, np.float64)
+    if names:
+        return value_ind, name_ind
+    else:
+        return value_ind
 
-    return X_indicators, name_indiactors
+
+def compile_dataset(X_pre_interval):
+    assert isinstance(X_pre_interval, np.ndarray)
+    assert X_pre_interval.ndim == 3
+    assert X_pre_interval.shape[1] == 4
+
+    ind, names = compile_tech_anal_single_interval(X_pre_interval[0], names=True)
+
+    X_indicators = np.zeros((X_pre_interval.shape[0], ind.shape[0]))
+
+    p('Compile input')
+    for i, pre_interval in enumerate(tqdm(X_pre_interval)):
+        X_indicators[i] = compile_tech_anal_single_interval(pre_interval, names=False)
+
+    return X_indicators
 
 
 if __name__ == '__main__':
+    # TEST 1
     interval = generate_random_interval(length=200)
+    ind, names = compile_tech_anal_single_interval(interval, names=True)
 
-    X, indicators = tech_anal_input_compiler(interval)
-
-    for x, i in zip(X, indicators):
-        print(i, x)
+    # TEST 2
+    pre_interval_train, post_interval_train, _, _ = generate_dataset(100, 1, 61, 20, debug=True)
+    X_ind = compile_dataset(pre_interval_train)
