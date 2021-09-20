@@ -124,9 +124,25 @@ def calc_trend(pre_interval, post_interval, debug=False):
     else:
         return reg.coef_[0, 0]
 
+    
+# TODO: check how the previous functions are applied to full datasets?
+def calc_min_max(y_post_interval):
+    assert isintance(y_post_interval, np.ndarray)
+    assert y_post_interval.ndim == 3
+    assert y_post_interval.shape[1] == 4
+    
+    y_min = np.min(y_post_interval, axis=(1, 2))
+    y_max = np.max(y_post_interval, axis=(1, 2))
+    
+    assert y_min == np.min(y_post_interval[:, LOW, :], axis=1)
+    assert y_max == np.max(y_post_interval[:, HIGH, :], axis=1)
+
+    return y_min, y_max
+    
 
 if __name__ == "__main__":
     # TODO: test calc_profit
+    # TODO: test calc_min_max
 
     pre_length = 150
     post_length = 20
