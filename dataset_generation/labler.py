@@ -127,7 +127,7 @@ def calc_trend(pre_interval, post_interval, debug=False):
     
 # TODO: check how the previous functions are applied to full datasets?
 def calc_min_max(y_post_interval):
-    assert isintance(y_post_interval, np.ndarray)
+    assert isinstance(y_post_interval, np.ndarray)
     assert y_post_interval.ndim == 3
     assert y_post_interval.shape[1] == 4
     

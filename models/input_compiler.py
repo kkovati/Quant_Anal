@@ -44,14 +44,15 @@ def compile_tech_anal_single_interval(pre_interval, names=False):
     # Daily Prices
 
     for i in range(-1, -8, -1):
-        name_ind_price_dim.append(f'OPEN_{i}')
         value_ind_price_dim.append(open[i])
-        name_ind_price_dim.append(f'HIGH_{i}')
         value_ind_price_dim.append(high[i])
-        name_ind_price_dim.append(f'LOW_{i}')
         value_ind_price_dim.append(low[i])
-        name_ind_price_dim.append(f'CLOSE_{i}')
         value_ind_price_dim.append(close[i])
+        if names:
+            name_ind_price_dim.append(f'OPEN_{i}')
+            name_ind_price_dim.append(f'HIGH_{i}')
+            name_ind_price_dim.append(f'LOW_{i}')
+            name_ind_price_dim.append(f'CLOSE_{i}')
 
     # Overlap Studies Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/overlap_studies.html
@@ -59,155 +60,183 @@ def compile_tech_anal_single_interval(pre_interval, names=False):
     for i in days:
         upperband, middleband, lowerband = talib.BBANDS(close, timeperiod=i, nbdevup=2, nbdevdn=2, matype=0)
         # nbdevup/nbdevdn -> Deviation multiplier for upper/lower band
-        name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_upper')
         value_ind_price_dim.append(upperband[-1])
-        name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_middle')
         value_ind_price_dim.append(middleband[-1])
-        name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_lower')
         value_ind_price_dim.append(lowerband[-1])
+        if names:
+            name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_upper')
+            name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_middle')
+            name_ind_price_dim.append(f'BBANDS_{i}_2_2_0_lower')
 
     for i in days:
         real = talib.DEMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'DEMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'DEMA_{i}')
 
     for i in days:
         real = talib.EMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'EMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'EMA_{i}')
 
     for i in days:
         real = talib.HT_TRENDLINE(close)
-        name_ind_price_dim.append(f'HT_TRENDLINE_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'HT_TRENDLINE_{i}')
 
     for i in days:
         real = talib.KAMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'KAMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'KAMA_{i}')
 
     for i in days:
         real = talib.MA(close, timeperiod=i, matype=0)
-        name_ind_price_dim.append(f'MA_{i}_0')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'MA_{i}_0')
 
     for i in days:
         real = talib.SMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'SMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'SMA_{i}')
 
     for i in days:
         real = talib.TEMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'TEMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'TEMA_{i}')
 
     for i in days:
         real = talib.TRIMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'TRIMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'TRIMA_{i}')
 
     for i in days:
         real = talib.WMA(close, timeperiod=i)
-        name_ind_price_dim.append(f'WMA_{i}')
         value_ind_price_dim.append(real[-1])
+        if names:
+            name_ind_price_dim.append(f'WMA_{i}')
 
     # Calculate deltas of indicators with price dimension
-    assert len(name_ind_price_dim) == len(value_ind_price_dim)
-    original_length = len(name_ind_price_dim)
+    if names:
+        assert len(name_ind_price_dim) == len(value_ind_price_dim)
+    original_length = len(value_ind_price_dim)
     for i in range(original_length):
         for j in range(i + 1, original_length):
-            name_ind_price_dim.append(f'{name_ind_price_dim[i]}-{name_ind_price_dim[j]}')
             value_ind_price_dim.append(value_ind_price_dim[i] - value_ind_price_dim[j])
+            if names:
+                name_ind_price_dim.append(f'{name_ind_price_dim[i]}-{name_ind_price_dim[j]}')
 
     # Momentum Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/momentum_indicators.html
 
     for i in days:
         real = talib.ADX(high, low, close, timeperiod=i)
-        name_ind_dimless.append(f'ADX_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'ADX_{i}')
 
     for i in range(len(days)):
         for j in range(i + 1, len(days)):
             real = talib.APO(close, fastperiod=days[i], slowperiod=days[j], matype=0)
-            name_ind_dimless.append(f'APO_{i}_{j}')
             value_ind_dimless.append(real[-1])
+            if names:
+                name_ind_dimless.append(f'APO_{i}_{j}')
 
     for i in days:
         aroondown, aroonup = talib.AROON(high, low, timeperiod=i)
-        name_ind_dimless.append(f'AROON_DOWN_{i}')
         value_ind_dimless.append(aroondown[-1])
-        name_ind_dimless.append(f'AROON_UP_{i}')
         value_ind_dimless.append(aroonup[-1])
-        name_ind_dimless.append(f'AROON_UP_{i}-AROON_DOWN_{i}')
         value_ind_dimless.append(aroonup[-1] - aroondown[-1])
+        if names:
+            name_ind_dimless.append(f'AROON_DOWN_{i}')
+            name_ind_dimless.append(f'AROON_UP_{i}')
+            name_ind_dimless.append(f'AROON_UP_{i}-AROON_DOWN_{i}')
         # TODO: crossover?
 
     real = talib.BOP(open, high, low, close)
-    name_ind_dimless.append('BOP')
     value_ind_dimless.append(real[-1])
+    if names:
+        name_ind_dimless.append('BOP')
 
     for i in days:
         real = talib.CCI(high, low, close, timeperiod=i)
-        name_ind_dimless.append(f'CCI_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'CCI_{i}')
 
     for i in range(len(days)):
         for j in range(i + 1, len(days)):
             for k in range(j + 1, len(days)):
                 macd, macdsignal, macdhist = talib.MACD(close, fastperiod=days[j], slowperiod=days[k],
                                                         signalperiod=days[i])
-                name_ind_dimless.append(f'MACD_{days[j]}_{days[k]}_{days[i]}')
                 value_ind_dimless.append(macd[-1])
-                name_ind_dimless.append(f'MACDSIGNAL_{days[j]}_{days[k]}_{days[i]}')
                 value_ind_dimless.append(macdsignal[-1])
-                name_ind_dimless.append(f'MACDHIST_{days[j]}_{days[k]}_{days[i]}')
                 value_ind_dimless.append(macdhist[-1])
+                if names:
+                    name_ind_dimless.append(f'MACD_{days[j]}_{days[k]}_{days[i]}')
+                    name_ind_dimless.append(f'MACDSIGNAL_{days[j]}_{days[k]}_{days[i]}')
+                    name_ind_dimless.append(f'MACDHIST_{days[j]}_{days[k]}_{days[i]}')
 
     for i in days:
         real = talib.MOM(close, timeperiod=i)
-        name_ind_dimless.append(f'MOM_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'MOM_{i}')
 
     for i in days:
         real = talib.ROC(close, timeperiod=i)
-        name_ind_dimless.append(f'ROC_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'ROC_{i}')
 
     for i in days:
         real = talib.RSI(close, timeperiod=i)
-        name_ind_dimless.append(f'RSI_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'RSI_{i}')
 
     slowk, slowd = talib.STOCH(high, low, close, fastk_period=5, slowk_period=3, slowk_matype=0, slowd_period=3,
                                slowd_matype=0)
-    name_ind_dimless.append('STOCH_5_3_0_3_0_slowk')
     value_ind_dimless.append(slowk[-1])
-    name_ind_dimless.append('STOCH_5_3_0_3_0_slowd')
     value_ind_dimless.append(slowd[-1])
+    if names:
+        name_ind_dimless.append('STOCH_5_3_0_3_0_slowk')
+        name_ind_dimless.append('STOCH_5_3_0_3_0_slowd')
 
     fastk, fastd = talib.STOCHRSI(close, timeperiod=14, fastk_period=5, fastd_period=3, fastd_matype=0)
-    name_ind_dimless.append('STOCHRSI_14_5_3_0_fastk')
     value_ind_dimless.append(fastk[-1])
-    name_ind_dimless.append('STOCHRSI_14_5_3_0_fastd')
     value_ind_dimless.append(fastd[-1])
+    if names:
+        name_ind_dimless.append('STOCHRSI_14_5_3_0_fastk')
+        name_ind_dimless.append('STOCHRSI_14_5_3_0_fastd')
 
     for i in days:
         real = talib.TRIX(close, timeperiod=i)
-        name_ind_dimless.append(f'TRIX_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'TRIX_{i}')
 
     for i in range(len(days)):
         for j in range(i + 1, len(days)):
             for k in range(k + 1, len(days)):
                 real = talib.ULTOSC(high, low, close, timeperiod1=i, timeperiod2=j, timeperiod3=k)
-                name_ind_dimless.append(f'ULTOSC_{i}_{j}_{k}')
                 value_ind_dimless.append(real[-1])
+                if names:
+                    name_ind_dimless.append(f'ULTOSC_{i}_{j}_{k}')
+
 
     for i in days:
         real = talib.WILLR(high, low, close, timeperiod=i)
-        name_ind_dimless.append(f'WILLR_{i}')
         value_ind_dimless.append(real[-1])
+        if names:
+            name_ind_dimless.append(f'WILLR_{i}')
+
 
     # Volume Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/volume_indicators.html
@@ -265,14 +294,18 @@ def compile_tech_anal_single_interval(pre_interval, names=False):
     # https://mrjbq7.github.io/ta-lib/func_groups/math_operators.html
 
     # Check indicators with price dimension
-    for name, value in zip(name_ind_price_dim, value_ind_price_dim):
-        assert isinstance(name, str), f'{i} is not string'
-        assert isinstance(value, float), f'{i} is not float'
+    if names:
+        assert len(name_ind_price_dim) == len(value_ind_price_dim)
+        for name, value in zip(name_ind_price_dim, value_ind_price_dim):
+            assert isinstance(name, str), f'{i} is not string'
+            assert isinstance(value, float), f'{i} is not float'
 
     # Check dimensionless indicators
-    for name, value in zip(name_ind_dimless, value_ind_dimless):
-        assert isinstance(name, str), f'{i} is not string'
-        assert isinstance(value, float), f'{i} is not float'
+    if names:
+        assert len(name_ind_dimless) == len(value_ind_dimless)
+        for name, value in zip(name_ind_dimless, value_ind_dimless):
+            assert isinstance(name, str), f'{i} is not string'
+            assert isinstance(value, float), f'{i} is not float'
 
     value_ind = np.array(value_ind_price_dim + value_ind_dimless)
     name_ind = name_ind_price_dim + name_ind_dimless
