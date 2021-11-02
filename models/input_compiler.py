@@ -230,13 +230,11 @@ def compile_tech_anal_single_interval(pre_interval, names=False):
                 if names:
                     name_ind_dimless.append(f'ULTOSC_{i}_{j}_{k}')
 
-
     for i in days:
         real = talib.WILLR(high, low, close, timeperiod=i)
         value_ind_dimless.append(real[-1])
         if names:
             name_ind_dimless.append(f'WILLR_{i}')
-
 
     # Volume Indicator Functions
     # https://mrjbq7.github.io/ta-lib/func_groups/volume_indicators.html
@@ -329,7 +327,7 @@ def compile_dataset(X_pre_interval):
     for i, pre_interval in enumerate(tqdm(X_pre_interval)):
         X_indicators[i] = compile_tech_anal_single_interval(pre_interval, names=False)
 
-    return X_indicators
+    return X_indicators, names
 
 
 if __name__ == '__main__':

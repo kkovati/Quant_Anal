@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.svm import LinearSVC
+from sklearn.svm import LinearSVR, SVR
 
 from dataset_generation.hsm_dataset import generate_dataset
 from dataset_generation.hsm_dataset import OPEN, HIGH, LOW, CLOSE
@@ -18,17 +18,24 @@ class Model1:
 
 
 if __name__ == '__main__':
-    X_pre_interval_train, y_post_interval_train, _, _ = generate_dataset(100, 1, 61, 20, debug=True)
-    X_indicator = compile_dataset(X_pre_interval_train)
-    y_min, y_max = calc_min_max(y_post_interval_train)
+    X_pre_interval_train, y_post_interval_train, _, _ = generate_dataset(1000, 1, 61, 20, debug=True)
+    X_indicator, names = compile_dataset(X_pre_interval_train)
+    y_min, y_max = calc_min_max(X_pre_interval_train[:, CLOSE, -1], y_post_interval_train)
 
-    svc_min = LinearSVC()
-    svc_max = LinearSVC()
+    X_indicator = np.nan_to_num(X_indicator, nan=0.0, posinf=10000, neginf=-10000)
 
-    svc_min.fit(X_indicator, y_min)
-    svc_max.fit(X_indicator, y_max)
-    
-    # TODO: not classifier, but regressor is needed here
+    svr_min = LinearSVR()
+    svr_max = LinearSVR()
 
-    pass
+    # svr_temp = SVR(kernel='linear')
+    # svr_temp.fit(X_indicator, y_max)
 
+    svr_min.fit(X_indicator, y_min)
+    svr_max.fit(X_indicator, y_max)
+
+    svr_min_coef_idx = np.abs(svr_min.coef_).argsort()[-10:][::-1]
+
+    for idx in svr_min_coef_idx:
+        print(names[idx])
+
+    a = 1

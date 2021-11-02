@@ -124,21 +124,29 @@ def calc_trend(pre_interval, post_interval, debug=False):
     else:
         return reg.coef_[0, 0]
 
-    
-# TODO: check how the previous functions are applied to full datasets?
-def calc_min_max(y_post_interval):
+
+def calc_min_max(X_pre_interval_buy_prices, y_post_interval):
+    assert isinstance(X_pre_interval_buy_prices, np.ndarray)
+    assert X_pre_interval_buy_prices.ndim == 1
+
     assert isinstance(y_post_interval, np.ndarray)
     assert y_post_interval.ndim == 3
     assert y_post_interval.shape[1] == 4
-    
-    y_min = np.min(y_post_interval, axis=(1, 2))
-    y_max = np.max(y_post_interval, axis=(1, 2))
-    
-    assert y_min == np.min(y_post_interval[:, LOW, :], axis=1)
-    assert y_max == np.max(y_post_interval[:, HIGH, :], axis=1)
+
+    assert X_pre_interval_buy_prices.shape[0] == y_post_interval.shape[0]
+
+    # y_min = np.min(y_post_interval, axis=(1, 2))
+    # y_max = np.max(y_post_interval, axis=(1, 2))
+    # assert np.all(y_min == np.min(y_post_interval[:, LOW, :], axis=1))
+    # assert np.all(y_max == np.max(y_post_interval[:, HIGH, :], axis=1))
+
+    y_min = np.min(y_post_interval[:, LOW, :], axis=1) / X_pre_interval_buy_prices
+    y_max = np.max(y_post_interval[:, HIGH, :], axis=1) / X_pre_interval_buy_prices
+
+    assert y_min.shape[0] == y_max.shape[0] == X_pre_interval_buy_prices.shape[0] == y_post_interval.shape[0]
 
     return y_min, y_max
-    
+
 
 if __name__ == "__main__":
     # TODO: test calc_profit
