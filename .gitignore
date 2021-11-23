@@ -127,5 +127,9 @@ dmypy.json
 # linguist detection
 *.html linguist-detectable=false
 
+# PyCharm
+.idea/
+*.iml
+
 # Kaggle data
 data/Huge_Stock_Market_Dataset/
