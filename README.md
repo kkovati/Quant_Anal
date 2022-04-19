@@ -1,2 +1,2 @@
 # Quant_Anal
-Quantitative analysis
+Quantitative analysis project
