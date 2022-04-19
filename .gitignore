@@ -133,3 +133,8 @@ dmypy.json
 
 # Kaggle data
 data/Huge_Stock_Market_Dataset/
+
+# Auxiliary formats
+*.html
+*.csv
+*.xlsx
