@@ -132,7 +132,7 @@ dmypy.json
 *.iml
 
 # Kaggle data
-data/Huge_Stock_Market_Dataset/
+# data/Huge_Stock_Market_Dataset/
 
 # Auxiliary formats
 *.html
