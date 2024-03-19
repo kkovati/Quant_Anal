@@ -1,34 +1,40 @@
 //@version=5
 strategy("ZLSMA strategy", overlay=true, margin_long=100, margin_short=100)
 
-length = input.int(14, title="Length")
-offset = input.int(0, title="Offset")
-src = input.source(close, title="Source")
+take_profit = input.float(0.6, title = "Take Profit [%]") / 100
+stop_loss = input.float(0.3, title = "Stop Loss [%]") / 100
+length = input.int(14, title = "Lin Reg Length")
+offset = input.int(0, title = "Lin Reg Offset")
+src = input.source(close, title = "Source")
 lsma = ta.linreg(src, length, offset)
 lsma2 = ta.linreg(lsma, length, offset)
-eq = lsma - lsma2
-zlsma = lsma + eq
+zlsma = 2 * lsma - lsma2
 dzlsma = zlsma - zlsma[1]
 
-longCondition = ta.crossover(dzlsma, 0)
+ema200 = ta.ema(src, 200)
+
+longCondition = ta.crossover(dzlsma, 0) and src > ema200
 if (longCondition and strategy.opentrades == 0)
     entry_name = str.tostring(bar_index) + "_buy"
     strategy.entry(entry_name, strategy.long)
     strategy.exit(entry_name + "_exit", entry_name,
-                  limit = close * 1.002,
-                  stop = close * 0.998)
+                  limit = close * (1 + take_profit),
+                  stop = close * (1 - stop_loss))
                   // trail
 
-shortCondition = ta.crossunder(dzlsma, 0)
+shortCondition = ta.crossunder(dzlsma, 0) and src < ema200
 if (shortCondition and strategy.opentrades == 0)
     entry_name = str.tostring(bar_index) + "_sell"
     strategy.entry(entry_name, strategy.short)
     strategy.exit(entry_name + "_exit", entry_name,
-                  limit = close * 0.998,
-                  stop = close * 1.002)
+                  limit = close * (1 - take_profit),
+                  stop = close * (1 + stop_loss))
 
+//plot(lsma, color=color.red, linewidth=2)
+//plot(lsma2, color=color.blue, linewidth=2)
+plot(zlsma, color = color.yellow, linewidth = 2)
 
-plot(zlsma, color=color.yellow, linewidth=3)
+plot(ema200, color = color.white, linewidth = 1)
 
 //hline(0, "Zero Line", color=color.black, linewidth=3)
 //plot(dzlsma, color=color.red, linewidth=3)
