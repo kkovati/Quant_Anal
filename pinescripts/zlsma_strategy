@@ -1,0 +1,34 @@
+//@version=5
+strategy("ZLSMA strategy", overlay=true, margin_long=100, margin_short=100)
+
+length = input.int(14, title="Length")
+offset = input.int(0, title="Offset")
+src = input.source(close, title="Source")
+lsma = ta.linreg(src, length, offset)
+lsma2 = ta.linreg(lsma, length, offset)
+eq = lsma - lsma2
+zlsma = lsma + eq
+dzlsma = zlsma - zlsma[1]
+
+longCondition = ta.crossover(dzlsma, 0)
+if (longCondition and strategy.opentrades == 0)
+    entry_name = str.tostring(bar_index) + "_buy"
+    strategy.entry(entry_name, strategy.long)
+    strategy.exit(entry_name + "_exit", entry_name,
+                  limit = close * 1.002,
+                  stop = close * 0.998)
+                  // trail
+
+shortCondition = ta.crossunder(dzlsma, 0)
+if (shortCondition and strategy.opentrades == 0)
+    entry_name = str.tostring(bar_index) + "_sell"
+    strategy.entry(entry_name, strategy.short)
+    strategy.exit(entry_name + "_exit", entry_name,
+                  limit = close * 0.998,
+                  stop = close * 1.002)
+
+
+plot(zlsma, color=color.yellow, linewidth=3)
+
+//hline(0, "Zero Line", color=color.black, linewidth=3)
+//plot(dzlsma, color=color.red, linewidth=3)
