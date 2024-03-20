@@ -38,3 +38,22 @@ plot(ema200, color = color.white, linewidth = 1)
 
 //hline(0, "Zero Line", color=color.black, linewidth=3)
 //plot(dzlsma, color=color.red, linewidth=3)
+
+
+
+
+***************************************************************
+//@version=4
+
+study(title = "ZLSMA - Zero Lag LSMA", shorttitle="ZLSMA", overlay=true, resolution="")
+length = input(title="Length", type=input.integer, defval=32)
+offset = input(title="Offset", type=input.integer, defval=0)
+src = input(close, title="Source")
+lsma = linreg(src, length, offset)
+lsma2 = linreg(lsma, length, offset)
+eq= lsma-lsma2
+zlsma = lsma+eq
+
+plot(lsma, color=color.yellow, linewidth=3)
+plot(lsma2, color=color.red, linewidth=3)
+plot(zlsma, color=color.blue, linewidth=3)

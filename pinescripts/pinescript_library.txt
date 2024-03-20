@@ -210,74 +210,6 @@ for i = 0 to 10
 
 ***************************************************************
 //@version=5
-strategy("Martingale strategy", overlay=true, margin_long=100, margin_short=100)
-// Martingale channel brakeout strategy
-
-var ratio = 1.01
-
-var init_trade = true
-var direction = 0 // 1: long -1: short
-var position_size = 0
-
-var out_top = close
-var in_top = close
-var in_bottom = close
-var out_bottom = close
-
-
-if init_trade
-    out_top := close * ratio
-    in_top := close
-    in_bottom := close / ratio
-    out_bottom := close / (ratio * ratio)
-    
-    position_size := 1
-    strategy.cancel_all()
-    strategy.close_all()
-    strategy.order("long", strategy.long, qty=position_size)
-    strategy.exit("exit", from_entry="long", limit=out_top, stop=in_bottom)
-    init_trade := false
-    direction := 1
-    
-else if direction == 1 and close > out_top
-    //close long w/ win
-    init_trade := true
-    direction := 0
-    
-else if direction == 1 and close < in_bottom
-    //close long w/ loss, open short
-    position_size := 2 * position_size
-    strategy.cancel_all()
-    strategy.close_all()
-    strategy.order("short", strategy.short, position_size, limit=out_top)
-    strategy.exit("exit", from_entry="short", limit=out_bottom, stop=in_top)
-    direction := -1
-    
-else if direction == -1 and close < out_bottom
-    //close short w/ win
-    init_trade := true
-    direction := 0
-
-else if direction == -1 and close > in_top
-    //close short w/ loss, open long
-    position_size := 2 * position_size
-    strategy.cancel_all()
-    strategy.close_all()
-    strategy.order("long", strategy.long, qty=position_size)
-    strategy.exit("exit", from_entry="long", limit=out_top, stop=in_bottom)
-    direction := 1
-
-plot(out_top)
-plot(in_top)
-plot(in_bottom)
-plot(out_bottom)
-
-plot(strategy.equity)
-plot(strategy.position_size)
-
-
-***************************************************************
-//@version=5
 strategy("My Naive Strategy", overlay=true, margin_long=100, margin_short=100)
 
 take_profit = 1 + input.float(defval = 1, title = "Take Profit [%]", minval = 0.1, step = 0.1) / 100
@@ -430,19 +362,5 @@ hline(h_line_level, "1 Line", color=color.green)
 hline(0, "Zero Line", color=color.white)
 hline(-h_line_level, "-1 Line", color=color.red)
 
-***************************************************************
-//@version=4
 
-study(title = "ZLSMA - Zero Lag LSMA", shorttitle="ZLSMA", overlay=true, resolution="")
-length = input(title="Length", type=input.integer, defval=32)
-offset = input(title="Offset", type=input.integer, defval=0)
-src = input(close, title="Source")
-lsma = linreg(src, length, offset)
-lsma2 = linreg(lsma, length, offset)
-eq= lsma-lsma2
-zlsma = lsma+eq
-
-plot(lsma, color=color.yellow, linewidth=3)
-plot(lsma2, color=color.red, linewidth=3)
-plot(zlsma, color=color.blue, linewidth=3)
 
