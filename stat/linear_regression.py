@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
+
 def main():
     df = pd.read_csv('../data/BTCUSDT-1m-2021.csv')
     # TODO use high/low values instead close
