@@ -109,24 +109,6 @@ plotshape(buy_marker, offset=-n, style=shape.triangleup, location=location.below
 
 ***************************************************************
 //@version=5
-indicator(title="TD Diff Indicator", shorttitle="TdDiffInd", overlay=true)
-// https://towardsdatascience.com/technical-pattern-recognition-for-trading-in-python-63770aab422f
-
-true_low = 0.0
-true_low := math.min(low, low[1])
-
-buy_pres = 0.0
-buy_pres := close - true_low
-
-true_hi = 0.0
-true_hi := math.max(high, high[1])
-
-sell_pres = 0.0
-sell_pres := close - true_hi
-
-
-***************************************************************
-//@version=5
 strategy("Grid Strategy", shorttitle="GridStrat", overlay=true, margin_long=100, margin_short=100)
 
 // Inputs
