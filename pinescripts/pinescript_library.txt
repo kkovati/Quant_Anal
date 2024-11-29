@@ -1,20 +1,4 @@
 
-
-***************************************************************
-//@version=5
-indicator("EMA vs SMMA", shorttitle="EMAvsSMMA", overlay=true)
-
-len_smma = 10
-smma = 0.0
-smma := na(smma[1]) ? ta.sma(close, len_smma) : (smma[1] * (len_smma - 1) + close) / len_smma
-plot(smma, title="SMMA", color=color.red)
-
-len_ema = 20
-ema = ta.ema(close, len_ema)
-plot(ema, title="EMA", color=color.blue)
-
-
-***************************************************************
 //@version=5
 strategy("My Scalping Strategy", overlay=true, margin_long=100, margin_short=100)
 
