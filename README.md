@@ -1,5 +1,6 @@
 # Quant_Anal
-Quantitative analysis project
+
+This repository contains quantitative analysis codes for data preprocessing, statistical modeling, and time-series analysis, providing flexible tools for making money. Maybe. Hopefully.
 
 ## Future Plans
 
