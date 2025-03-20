@@ -2,6 +2,8 @@
 
 This repository contains quantitative analysis codes for data preprocessing, statistical modeling, and time-series analysis, providing flexible tools for making money. Maybe. Hopefully.
 
+This repo is not documented at all. It is mainly for personal use, but feel free to look around.
+
 ## Future Plans
 
 **Pattern Matching**  
