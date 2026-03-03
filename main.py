@@ -6,6 +6,10 @@ import random
 from tqdm import tqdm
 
 
+INITIAL_BUDGET = 1000
+COMMISSION = 0.001  # 0.1% per trade
+
+
 class Ohcl:
     IN = 0
     OUT_HI = 1
@@ -58,7 +62,7 @@ class Timeseries:
         return idx, Ohcl(row["Open"], row["High"], row["Low"], row["Close"])
 
 
-class OscillationCounter:
+class ChBreakoutTrader:
     NO_TRADE = 0
     UP_TRADE = 1
     DOWN_TRADE = 2
@@ -67,6 +71,7 @@ class OscillationCounter:
 
     def __init__(self, direction, win_percentage, lose_percentage, optimistic=True):
         assert direction in ['up', 'down']
+
         self.direction = direction
         self.win_percentage = win_percentage
         self.lose_percentage = lose_percentage
@@ -75,9 +80,11 @@ class OscillationCounter:
         self.state = self.NO_TRADE
         self.a = self.b = self.c = self.d = None
 
-        self.session = {}
-        self.n_trades_in_session = 0
-        self.trades = []
+        self.session = {}  # current session
+        self.sessions = []  # all sessions
+
+        self.const_budget = INITIAL_BUDGET
+        # self.real_budget = INITIAL_BUDGET
 
     def update(self, ohcl: Ohcl):
         if self.state == self.NO_TRADE:
@@ -86,91 +93,99 @@ class OscillationCounter:
             self.c = ohcl.close * (1 - self.lose_percentage / 100)
             self.d = ohcl.close * (1 - (self.lose_percentage + self.win_percentage) / 100)
             self.state = self.UP_TRADE
-            # print(f'NO_TRADE -> UP_TRADE {self.a} {self.b} {self.c} {self.d} ')
             self.session = {
                 "n_trades": 0,
                 "ohlcs": [ohcl],
                 "levels": (self.a, self.b, self.c, self.d)
             }
+            self.const_budget = INITIAL_BUDGET
             return
 
         self.session["ohlcs"].append(ohcl)
 
+        assert self.state in (self.UP_TRADE, self.DOWN_TRADE)
+        win = False
+        lose = False
         if self.state == self.UP_TRADE:
+            win_price = self.a
+            entry_price = self.b
+            lose_price = self.c
             result = ohcl.is_out_of_bounds(self.a, self.c)
-            if result == Ohcl.IN:
-                # Nothing happens
-                return
-            # Trade ended
-            self.session["n_trades"] += 1
-            # print(f"Trade ended {ohcl.open} {ohcl.high} {ohcl.low} {ohcl.close}")
-            # print(f"No. trades: {self.session["n_trades"]}")
-            if result == Ohcl.OUT_HI:
-                # Win
-                # print("OUT_HI Win -> NO_TRADE")
-                self.trades.append(self.session["n_trades"])
-                self.state = self.NO_TRADE
-            if result == Ohcl.OUT_LO:
-                # Lose
-                # print("OUT_LO Lose -> DOWN_TRADE")
-                self.state = self.DOWN_TRADE
-            if result == Ohcl.OUT_BOTH:
-                if self.optimistic:
-                    # Win
-                    # print("OUT_BOTH Win -> NO_TRADE")
-                    self.trades.append(self.session["n_trades"])
-                    self.state = self.NO_TRADE
-                else:
-                    # Lose
-                    # print("OUT_BOTH Lose -> DOWN_TRADE")
-                    self.state = self.DOWN_TRADE
-
-        if self.state == self.DOWN_TRADE:
+            win_cond = Ohcl.OUT_HI
+            lose_cond = Ohcl.OUT_LO
+            next_trade = self.DOWN_TRADE
+        else:  # self.DOWN_TRADE
+            lose_price = self.b
+            entry_price = self.c
+            win_price = self.d
             result = ohcl.is_out_of_bounds(self.b, self.d)
-            if result == Ohcl.IN:
-                # Nothing happens
-                return
-            # Trade ended
-            self.session["n_trades"] += 1
-            # print(f"Trade ended {ohcl.open} {ohcl.high} {ohcl.low} {ohcl.close}")
-            # print(f"No. trades: {self.session["n_trades"]}")
-            if result == Ohcl.OUT_LO:
-                # Win
-                # print("OUT_LO Win -> NO_TRADE")
-                self.trades.append(self.session["n_trades"])
-                self.state = self.NO_TRADE
-            if result == Ohcl.OUT_HI:
-                # Lose
-                # print("OUT_HI Lose -> UP_TRADE")
-                self.state = self.UP_TRADE
-            if result == Ohcl.OUT_BOTH:
-                if self.optimistic:
-                    # Win
-                    # print("OUT_BOTH Win -> NO_TRADE")
-                    self.trades.append(self.session["n_trades"])
-                    self.state = self.NO_TRADE
-                else:
-                    # Lose
-                    # print("OUT_BOTH Lose -> UP_TRADE")
-                    self.state = self.UP_TRADE
+            win_cond = Ohcl.OUT_LO
+            lose_cond = Ohcl.OUT_HI
+            next_trade = self.UP_TRADE
+
+        if result == Ohcl.IN:
+            # Nothing happens
+            return
+        # Trade ended
+        self.session["n_trades"] += 1
+        if result == win_cond:
+            win = True
+        if result == lose_cond:
+            lose = True
+        if result == Ohcl.OUT_BOTH:
+            if self.optimistic:
+                win = True
+            else:
+                lose = True
+
+        assert not (win and lose)
+
+        if win:
+            self.const_budget = self.calculate_profit(
+                entry_price=entry_price,
+                exit_price=win_price,
+                is_long=self.state == self.UP_TRADE,
+                amount=self.const_budget,
+                commission=COMMISSION)
+            self.session["profit"] = self.const_budget - INITIAL_BUDGET
+            self.sessions.append(self.session)
+            self.state = self.NO_TRADE
+
+        if lose:
+            self.const_budget = self.calculate_profit(
+                entry_price=entry_price,
+                exit_price=lose_price,
+                is_long=self.state == self.UP_TRADE,
+                amount=self.const_budget,
+                commission=COMMISSION)
+            self.state = next_trade
 
         # if self.session["n_trades"] == 11:
         # if len(self.session["ohlcs"]) > 30:
         # if self.session["n_trades"] == 6:
         #     self.plot_session(self.session)
 
-    def calculate_profit(self, entry_price, exit_price, is_long, amount, commission):
+    def get_sum_profit(self):
+        return sum(session.get("profit", 0) for session in self.sessions)
+
+    def count_trades(self):
+        return Counter((session["n_trades"] for session in self.sessions))
+
+    @staticmethod
+    def calculate_profit(entry_price, exit_price, is_long, amount, commission):
+        amount -= amount * commission  # subtract entry commission
         shares = amount / entry_price  # number of shares bought/sold
         if is_long:
             profit = (exit_price - entry_price) * shares
         else:
             profit = (entry_price - exit_price) * shares
 
-        # TODO this commission calc is wrong
-        total_profit = profit - 2 * commission  # subtract entry and exit commissions
-        return amount + total_profit
+        amount += profit  # add profit to amount
+        amount -= amount * commission  # subtract exit commission
+        return amount
 
-    def plot_session(self, session):
+    @staticmethod
+    def plot_session(session):
         fig = go.Figure(
             data=[
                 go.Candlestick(
@@ -218,48 +233,42 @@ def log_uniform(min_val=0.1, max_val=1000):
     return 10 ** log_sample
 
 
-def random_search(param_space, experiment_fn, iterations=10):
-    param_space = {
-        'lr': [0.001, 0.01, 0.1],
-        'batch_size': [16, 32, 64],
-        'dropout': [0.1, 0.3, 0.5]
+def generate_random_ch_breakout_trader():
+    # Randomly sample parameters
+    params = {
+        'win_percentage': log_uniform(0.1, 10),
+        'lose_percentage': log_uniform(0.1, 10),
+        'optimistic': random.choice([True, False])
     }
-
-    results = []
-
-    for i in range(iterations):
-        # Randomly sample parameters
-        params = {k: random.choice(v) for k, v in param_space.items()}
-        # Run experiment
-        score = experiment_fn(params)
-        # Log result
-        results.append((params, score))
-        print(f"Run {i+1}: Params={params}, Score={score}")
-
-    # Sort results by score descending
-    results.sort(key=lambda x: x[1], reverse=True)
-    return results
+    print(params)
+    return ChBreakoutTrader("up", **params)
 
 
-def main():
-    ts = Timeseries("data/Bitcoin_Historical_Data/btcusd_1-min_data.csv")
-    oc = OscillationCounter("up", 1, 5)
-
+def run_experiment(timeseries, trader):
     early_skip = True
-    for row in tqdm(ts.df.itertuples(), total=len(ts.df)):
+    for row in tqdm(timeseries.df.itertuples(), total=len(timeseries.df)):
         # print(row.Index, row.Timestamp, row.Open, row.High, row.Low, row.Close, row.Volume)
         if row.Open > 10000:
             early_skip = False
         if early_skip:
             continue
         ohcl = Ohcl(row.Open, row.High, row.Low, row.Close)
-        oc.update(ohcl)
-        # if row.Index > 10000:
-        #     break
+        trader.update(ohcl)
 
-    # print(oc.trades)
-    freq = Counter(oc.trades)
-    print(freq)
+
+def main():
+    n_experiments = 10
+
+    ts = Timeseries("data/Bitcoin_Historical_Data/btcusd_1-min_data.csv")
+
+    for _ in range(n_experiments):
+        ch_breakout_trader = generate_random_ch_breakout_trader()
+        run_experiment(ts, ch_breakout_trader)
+        print(ch_breakout_trader.get_sum_profit())
+        print(ch_breakout_trader.count_trades())
+
+    # Sort results by score descending
+    # results.sort(key=lambda x: x[1], reverse=True)
 
 
 if __name__ == '__main__':
