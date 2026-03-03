@@ -133,6 +133,7 @@ dmypy.json
 
 # Kaggle data
 # data/Huge_Stock_Market_Dataset/
+data/Bitcoin_Historical_Data/btcusd_1-min_data.csv
 
 # Auxiliary formats
 *.html
