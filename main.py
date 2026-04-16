@@ -1,5 +1,8 @@
 from collections import Counter
 import math
+import sys
+import os
+from datetime import datetime
 import pandas as pd
 import plotly.graph_objects as go
 import random
@@ -62,6 +65,27 @@ class Timeseries:
         return idx, Ohcl(row["Open"], row["High"], row["Low"], row["Close"])
 
 
+def log_uniform(min_val=0.1, max_val=1000):
+    # Sample uniformly in log space
+    log_min = math.log10(min_val)
+    log_max = math.log10(max_val)
+    log_sample = random.uniform(log_min, log_max)
+    return 10 ** log_sample
+
+
+def generate_random_ch_breakout_trader():
+    # Randomly sample parameters
+    params = {
+        'win_percentage': log_uniform(0.1, 10),
+        'lose_percentage': log_uniform(0.1, 10),
+        'first_position_size_percentage': log_uniform(1, 100),
+        'position_increment_percentage': log_uniform(10, 1000),
+        'next_direction_strategy': random.choice(['always_up', 'always_down', 'alternate']),
+        'optimistic': random.choice([True, False])
+    }
+    return ChBreakoutTrader(**params, params=params)
+
+
 class ChBreakoutTrader:
     NO_TRADE = 0
     UP_TRADE = 1
@@ -69,12 +93,34 @@ class ChBreakoutTrader:
     IN_REGION_1 = 3
     IN_REGION_2 = 4
 
-    def __init__(self, direction, win_percentage, lose_percentage, optimistic=True):
-        assert direction in ['up', 'down']
+    def __init__(self,
+                 win_percentage,
+                 lose_percentage,
+                 first_position_size_percentage,
+                 position_increment_percentage,
+                 next_direction_strategy,
+                 optimistic,
+                 params):
 
-        self.direction = direction
+        self.params = params
+
         self.win_percentage = win_percentage
         self.lose_percentage = lose_percentage
+
+        assert 0 < first_position_size_percentage <= 100, "first_position_size_percentage must be in (0, 100]"
+        self.first_position_size_percentage = first_position_size_percentage
+        self.position_increment_percentage = position_increment_percentage
+        self.current_position_size_percentage = None
+
+        assert next_direction_strategy in ['always_up', 'always_down', 'alternate']
+        self.next_direction_strategy = next_direction_strategy
+        if next_direction_strategy in ('always_up', 'alternate'):
+            self.direction = 'up'
+        elif next_direction_strategy in ('always_down'):
+            self.direction = 'down'
+        else:
+            raise ValueError(f"Unknown next_direction_strategy: {next_direction_strategy}")
+
         self.optimistic = optimistic
 
         self.state = self.NO_TRADE
@@ -82,6 +128,10 @@ class ChBreakoutTrader:
 
         self.session = {}  # current session
         self.sessions = []  # all sessions
+
+        self.session_samples = {}
+        self.position_size_list = []
+        self.profit_list = []
 
         self.const_budget = INITIAL_BUDGET
         # self.real_budget = INITIAL_BUDGET
@@ -92,16 +142,34 @@ class ChBreakoutTrader:
             self.b = ohcl.close
             self.c = ohcl.close * (1 - self.lose_percentage / 100)
             self.d = ohcl.close * (1 - (self.lose_percentage + self.win_percentage) / 100)
-            self.state = self.UP_TRADE
+
+            if self.next_direction_strategy in 'always_up':
+                self.state = self.UP_TRADE
+            elif self.next_direction_strategy in 'always_down':
+                self.state = self.DOWN_TRADE
+            elif self.next_direction_strategy in 'alternate':
+                if self.direction == 'up':
+                    self.state = self.UP_TRADE
+                    self.direction = 'down'
+                else:
+                    self.state = self.DOWN_TRADE
+                    self.direction = 'up'
+            else:
+                raise ValueError(f"Unknown next_direction_strategy: {self.next_direction_strategy}")
+
+            self.const_budget = INITIAL_BUDGET
+            self.current_position_size_percentage = self.first_position_size_percentage
+
             self.session = {
                 "n_trades": 0,
-                "ohlcs": [ohcl],
+                # "ohlcs": [ohcl],  # TODO: enable for plotting
                 "levels": (self.a, self.b, self.c, self.d)
             }
-            self.const_budget = INITIAL_BUDGET
+            self.position_size_list = []
+            self.profit_list = []
             return
 
-        self.session["ohlcs"].append(ohcl)
+        # self.session["ohlcs"].append(ohcl)  # TODO: enable for plotting
 
         assert self.state in (self.UP_TRADE, self.DOWN_TRADE)
         win = False
@@ -126,6 +194,7 @@ class ChBreakoutTrader:
         if result == Ohcl.IN:
             # Nothing happens
             return
+
         # Trade ended
         self.session["n_trades"] += 1
         if result == win_cond:
@@ -140,24 +209,49 @@ class ChBreakoutTrader:
 
         assert not (win and lose)
 
+        # Calculate the position size for this trade
+        position_size = self.const_budget * self.current_position_size_percentage / 100
+        self.position_size_list.append(position_size)
+        # Subtract the amount used for this trade
+        self.const_budget -= position_size
+        # Increase the position size percentage for the next trade
+        self.current_position_size_percentage *= 1 + (self.position_increment_percentage / 100)
+        self.current_position_size_percentage = min(self.current_position_size_percentage, 100)  # cap at 100%
+
         if win:
-            self.const_budget = self.calculate_profit(
+            # Calculate the amount after the trade (profit or loss)
+            position_size_after_trade = self.calculate_profit(
                 entry_price=entry_price,
                 exit_price=win_price,
                 is_long=self.state == self.UP_TRADE,
-                amount=self.const_budget,
+                amount=position_size,
                 commission=COMMISSION)
+            # Record profit
+            self.profit_list.append(position_size_after_trade - position_size)
+            # Add the amount after the trade back to the budget
+            self.const_budget += position_size_after_trade
+            # Record session
             self.session["profit"] = self.const_budget - INITIAL_BUDGET
             self.sessions.append(self.session)
+            if self.session["n_trades"] not in self.session_samples:
+                self.session_samples[self.session["n_trades"]] = {
+                    "position_sizes": [round(ps, 2) for ps in self.position_size_list],
+                    "profits": [round(p, 2) for p in self.profit_list]
+                }
             self.state = self.NO_TRADE
 
         if lose:
-            self.const_budget = self.calculate_profit(
+            # Calculate the amount after the trade (profit or loss)
+            position_size_after_trade = self.calculate_profit(
                 entry_price=entry_price,
                 exit_price=lose_price,
                 is_long=self.state == self.UP_TRADE,
-                amount=self.const_budget,
+                amount=position_size,
                 commission=COMMISSION)
+            # Record profit
+            self.profit_list.append(position_size_after_trade - position_size)
+            # Add the amount after the trade back to the budget
+            self.const_budget += position_size_after_trade
             self.state = next_trade
 
         # if self.session["n_trades"] == 11:
@@ -166,8 +260,18 @@ class ChBreakoutTrader:
         #     self.plot_session(self.session)
 
     def print_summary(self):
-        print(f"ChBreakoutTrader(direction={self.direction}, win_percentage={self.win_percentage}, ")
-        print(f"lose_percentage={self.lose_percentage}, optimistic={self.optimistic})")
+        print(f"\nChBreakoutTrader")
+        for param in self.params:
+            print(f"  {param}: {self.params[param]}")
+
+        # Session samples
+        print("Session samples:")
+        # Read out incrementing key order from self.session_samples
+        for k in sorted(self.session_samples.keys()):
+            s = self.session_samples[k]
+            print(f"  {k} trades:\n" 
+                  f"    position_sizes: {s["position_sizes"]}\n"
+                  f"    profits       : {s["profits"]}")
 
         # Profit distribution across sessions
         print("Profit distribution across sessions:")
@@ -177,16 +281,19 @@ class ChBreakoutTrader:
         for n_trades, profits in profit_per_no_trades_counter.items():
             print(f"  {n_trades} trades: {len(profits)} sess, "
                   f"profit sum: {sum(p for p in profits):.2f} "
-                  f"average profit: {sum(profits) / len(profits):.2f} "
+                  f"avg. profit: {sum(profits) / len(profits):.2f} "
                   f"({min(profits):.2f} - {max(profits):.2f})")
 
         # Trade count distribution across sessions
-        print("Trade count distribution across sessions:")
-        for n_trades, count in Counter((session["n_trades"] for session in self.sessions)).items():
-            print(f"  {n_trades} trades: {count} sessions")
+        # print("Trade count distribution across sessions:")
+        # for n_trades, count in Counter((session["n_trades"] for session in self.sessions)).items():
+        #     print(f"  {n_trades} trades: {count} sessions")
 
         # Sum profit
-        print(f"Sum profit: {sum(session.get("profit", 0) for session in self.sessions)}")
+        sum_profit = sum(session.get("profit", 0) for session in self.sessions)
+        print(f"Sum profit: {sum_profit}")
+        if sum_profit > 0:
+            print(f"WINNER!")
 
     @staticmethod
     def calculate_profit(entry_price, exit_price, is_long, amount, commission):
@@ -242,25 +349,6 @@ class ChBreakoutTrader:
         fig.show()
 
 
-def log_uniform(min_val=0.1, max_val=1000):
-    # Sample uniformly in log space
-    log_min = math.log10(min_val)
-    log_max = math.log10(max_val)
-    log_sample = random.uniform(log_min, log_max)
-    return 10 ** log_sample
-
-
-def generate_random_ch_breakout_trader():
-    # Randomly sample parameters
-    params = {
-        'win_percentage': log_uniform(0.1, 10),
-        'lose_percentage': log_uniform(0.1, 10),
-        'optimistic': random.choice([True, False])
-    }
-    print(params)
-    return ChBreakoutTrader("up", **params)
-
-
 def run_experiment(timeseries, trader):
     early_skip = True
     for row in tqdm(timeseries.df.itertuples(), total=len(timeseries.df)):
@@ -274,6 +362,20 @@ def run_experiment(timeseries, trader):
 
 
 def main():
+    os.makedirs("logs", exist_ok=True)
+    log_filename = f"logs/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+    class Tee:
+        def __init__(self, *streams):
+            self.streams = streams
+        def write(self, data):
+            for s in self.streams:
+                s.write(data)
+        def flush(self):
+            for s in self.streams:
+                s.flush()
+    log_file = open(log_filename, "w")
+    sys.stdout = Tee(sys.__stdout__, log_file)
+
     n_experiments = 10
 
     ts = Timeseries("data/Bitcoin_Historical_Data/btcusd_1-min_data.csv")
