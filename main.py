@@ -165,11 +165,28 @@ class ChBreakoutTrader:
         # if self.session["n_trades"] == 6:
         #     self.plot_session(self.session)
 
-    def get_sum_profit(self):
-        return sum(session.get("profit", 0) for session in self.sessions)
+    def print_summary(self):
+        print(f"ChBreakoutTrader(direction={self.direction}, win_percentage={self.win_percentage}, ")
+        print(f"lose_percentage={self.lose_percentage}, optimistic={self.optimistic})")
 
-    def count_trades(self):
-        return Counter((session["n_trades"] for session in self.sessions))
+        # Profit distribution across sessions
+        print("Profit distribution across sessions:")
+        profit_per_no_trades_counter = {}
+        for session in self.sessions:
+            profit_per_no_trades_counter.setdefault(session["n_trades"], []).append(session.get("profit", 0))
+        for n_trades, profits in profit_per_no_trades_counter.items():
+            print(f"  {n_trades} trades: {len(profits)} sess, "
+                  f"profit sum: {sum(p for p in profits):.2f} "
+                  f"average profit: {sum(profits) / len(profits):.2f} "
+                  f"({min(profits):.2f} - {max(profits):.2f})")
+
+        # Trade count distribution across sessions
+        print("Trade count distribution across sessions:")
+        for n_trades, count in Counter((session["n_trades"] for session in self.sessions)).items():
+            print(f"  {n_trades} trades: {count} sessions")
+
+        # Sum profit
+        print(f"Sum profit: {sum(session.get("profit", 0) for session in self.sessions)}")
 
     @staticmethod
     def calculate_profit(entry_price, exit_price, is_long, amount, commission):
@@ -261,11 +278,12 @@ def main():
 
     ts = Timeseries("data/Bitcoin_Historical_Data/btcusd_1-min_data.csv")
 
+    random.seed(3)
+
     for _ in range(n_experiments):
         ch_breakout_trader = generate_random_ch_breakout_trader()
         run_experiment(ts, ch_breakout_trader)
-        print(ch_breakout_trader.get_sum_profit())
-        print(ch_breakout_trader.count_trades())
+        ch_breakout_trader.print_summary()
 
     # Sort results by score descending
     # results.sort(key=lambda x: x[1], reverse=True)
