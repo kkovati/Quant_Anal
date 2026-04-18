@@ -73,16 +73,62 @@ def log_uniform(min_val=0.1, max_val=1000):
     return 10 ** log_sample
 
 
-def generate_random_ch_breakout_trader():
-    # Randomly sample parameters
-    params = {
-        'win_percentage': log_uniform(0.1, 10),
-        'lose_percentage': log_uniform(0.1, 10),
-        'first_position_size_percentage': log_uniform(1, 100),
-        'position_increment_percentage': log_uniform(10, 1000),
-        'next_direction_strategy': random.choice(['always_up', 'always_down', 'alternate']),
-        'optimistic': random.choice([True, False])
-    }
+def generate_random_ch_breakout_trader(mode):
+    if mode == "independent":
+        params = {
+            'win_percentage': log_uniform(0.1, 10),
+            'lose_percentage': log_uniform(0.1, 10),
+            'first_position_size_percentage': log_uniform(1, 100),
+            'position_increment_percentage': log_uniform(10, 1000),
+            'next_direction_strategy': random.choice(['always_up', 'always_down', 'alternate']),
+            'optimistic': random.choice([True, False])
+        }
+    elif mode == "correlated":
+        win_percentage = log_uniform(0.1, 10)
+        win_lose_ratio = log_uniform(1, 20)
+        if random.choice([True, False]):
+            win_lose_ratio = 1 / win_lose_ratio
+        lose_percentage = win_percentage * win_lose_ratio
+        params = {
+            'win_percentage': win_percentage,
+            'lose_percentage': lose_percentage,
+            'first_position_size_percentage': log_uniform(1, 100),
+            'position_increment_percentage': log_uniform(10, 1000),
+            'next_direction_strategy': random.choice(['always_up', 'always_down', 'alternate']),
+            'optimistic': random.choice([True, False])
+        }
+    if mode == "fixed":
+        params = {
+            'win_percentage': 1,
+            'lose_percentage': 2,
+            'first_position_size_percentage': log_uniform(0.5, 100),
+            'position_increment_percentage': log_uniform(10, 1000),
+            'next_direction_strategy': random.choice(['always_up', 'always_down', 'alternate']),
+            'optimistic': random.choice([True, False])
+        }
+    elif mode == "custom":
+        params = {
+            'win_percentage': 7,
+            'lose_percentage': 7,
+            'position_size_percentage_list': [10, 10, 22.5, 44, 100, 100, 100],
+            #'position_size_percentage_list': [],
+            'first_position_size_percentage': 1,
+            'position_increment_percentage': 250,
+            'next_direction_strategy': 'always_up',
+            'optimistic': True
+        }
+        params = {
+            'win_percentage': 8,
+            'lose_percentage': 5,
+            'position_size_percentage_list': [10, 10, 22.5, 44, 100, 100, 100],
+            #'position_size_percentage_list': [],
+            'first_position_size_percentage': 1,
+            'position_increment_percentage': 250,
+            'next_direction_strategy': 'always_up',
+            'optimistic': True
+        }
+    else:
+        assert False
     return ChBreakoutTrader(**params, params=params)
 
 
@@ -96,6 +142,7 @@ class ChBreakoutTrader:
     def __init__(self,
                  win_percentage,
                  lose_percentage,
+                 position_size_percentage_list,
                  first_position_size_percentage,
                  position_increment_percentage,
                  next_direction_strategy,
@@ -107,16 +154,24 @@ class ChBreakoutTrader:
         self.win_percentage = win_percentage
         self.lose_percentage = lose_percentage
 
-        assert 0 < first_position_size_percentage <= 100, "first_position_size_percentage must be in (0, 100]"
-        self.first_position_size_percentage = first_position_size_percentage
-        self.position_increment_percentage = position_increment_percentage
-        self.current_position_size_percentage = None
+        if position_size_percentage_list:
+            assert 0 < min(position_size_percentage_list) and max(position_size_percentage_list) <= 100, \
+                "position_size_percentage_list values must be in (0, 100]"
+            self.position_size_percentage_list = position_size_percentage_list
+        else:
+            assert 0 < first_position_size_percentage <= 100, "first_position_size_percentage must be in (0, 100]"
+            assert 0 < position_increment_percentage, "position_increment_percentage must be > 0"
+            self.position_size_percentage_list = []
+            for i in range(100):
+                ps = first_position_size_percentage * (1 + position_increment_percentage / 100) ** i
+                self.position_size_percentage_list.append(min(ps, 100))  # cap at 100%
+        self.position_size_percentage_list_idx = 0
 
         assert next_direction_strategy in ['always_up', 'always_down', 'alternate']
         self.next_direction_strategy = next_direction_strategy
         if next_direction_strategy in ('always_up', 'alternate'):
             self.direction = 'up'
-        elif next_direction_strategy in ('always_down'):
+        elif next_direction_strategy in 'always_down':
             self.direction = 'down'
         else:
             raise ValueError(f"Unknown next_direction_strategy: {next_direction_strategy}")
@@ -158,7 +213,7 @@ class ChBreakoutTrader:
                 raise ValueError(f"Unknown next_direction_strategy: {self.next_direction_strategy}")
 
             self.const_budget = INITIAL_BUDGET
-            self.current_position_size_percentage = self.first_position_size_percentage
+            self.position_size_percentage_list_idx = 0
 
             self.session = {
                 "n_trades": 0,
@@ -210,13 +265,17 @@ class ChBreakoutTrader:
         assert not (win and lose)
 
         # Calculate the position size for this trade
-        position_size = self.const_budget * self.current_position_size_percentage / 100
+        if self.position_size_percentage_list_idx >= len(self.position_size_percentage_list):
+            position_size_percentage = 100
+        else:
+            position_size_percentage = self.position_size_percentage_list[self.position_size_percentage_list_idx]
+        assert 0 < position_size_percentage <= 100, "position_size_percentage must be in (0, 100]"
+        position_size = self.const_budget * position_size_percentage / 100
         self.position_size_list.append(position_size)
         # Subtract the amount used for this trade
         self.const_budget -= position_size
         # Increase the position size percentage for the next trade
-        self.current_position_size_percentage *= 1 + (self.position_increment_percentage / 100)
-        self.current_position_size_percentage = min(self.current_position_size_percentage, 100)  # cap at 100%
+        self.position_size_percentage_list_idx += 1
 
         if win:
             # Calculate the amount after the trade (profit or loss)
@@ -278,7 +337,8 @@ class ChBreakoutTrader:
         profit_per_no_trades_counter = {}
         for session in self.sessions:
             profit_per_no_trades_counter.setdefault(session["n_trades"], []).append(session.get("profit", 0))
-        for n_trades, profits in profit_per_no_trades_counter.items():
+        for n_trades in sorted(profit_per_no_trades_counter.keys()):
+            profits = profit_per_no_trades_counter[n_trades]
             print(f"  {n_trades} trades: {len(profits)} sess, "
                   f"profit sum: {sum(p for p in profits):.2f} "
                   f"avg. profit: {sum(profits) / len(profits):.2f} "
@@ -376,14 +436,14 @@ def main():
     log_file = open(log_filename, "w")
     sys.stdout = Tee(sys.__stdout__, log_file)
 
-    n_experiments = 10
+    n_experiments = 1000
 
     ts = Timeseries("data/Bitcoin_Historical_Data/btcusd_1-min_data.csv")
 
-    random.seed(3)
+    #random.seed(3)
 
     for _ in range(n_experiments):
-        ch_breakout_trader = generate_random_ch_breakout_trader()
+        ch_breakout_trader = generate_random_ch_breakout_trader(mode="custom")
         run_experiment(ts, ch_breakout_trader)
         ch_breakout_trader.print_summary()
 
