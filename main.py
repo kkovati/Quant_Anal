@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, deque
 import math
 import sys
 import os
@@ -178,6 +178,9 @@ class ChBreakoutTrader:
 
         self.optimistic = optimistic
 
+        self.bbw = BBW(window=10000, k=2.0)
+        self.bbw_thres = 0.5
+
         self.state = self.NO_TRADE
         self.a = self.b = self.c = self.d = None
 
@@ -192,7 +195,12 @@ class ChBreakoutTrader:
         # self.real_budget = INITIAL_BUDGET
 
     def update(self, ohcl: Ohcl):
+        bbw = self.bbw.update(ohcl)
+
         if self.state == self.NO_TRADE:
+            if bbw is None:
+                return  # Not ready
+
             self.a = ohcl.close * (1 + self.win_percentage / 100)
             self.b = ohcl.close
             self.c = ohcl.close * (1 - self.lose_percentage / 100)
@@ -217,13 +225,16 @@ class ChBreakoutTrader:
 
             self.session = {
                 "n_trades": 0,
+                "n_candles": 1,
                 # "ohlcs": [ohcl],  # TODO: enable for plotting
-                "levels": (self.a, self.b, self.c, self.d)
+                "levels": (self.a, self.b, self.c, self.d),
+                "bbw": bbw
             }
             self.position_size_list = []
             self.profit_list = []
             return
 
+        self.session["n_candles"] += 1
         # self.session["ohlcs"].append(ohcl)  # TODO: enable for plotting
 
         assert self.state in (self.UP_TRADE, self.DOWN_TRADE)
@@ -341,8 +352,32 @@ class ChBreakoutTrader:
             profits = profit_per_no_trades_counter[n_trades]
             print(f"  {n_trades} trades: {len(profits)} sess, "
                   f"profit sum: {sum(p for p in profits):.2f} "
-                  f"avg. profit: {sum(profits) / len(profits):.2f} "
+                  f"avg profit: {sum(profits) / len(profits):.2f} "
                   f"({min(profits):.2f} - {max(profits):.2f})")
+
+        # Length distribution across sessions
+        print("Length distribution across sessions:")
+        length_per_no_trades_counter = {}
+        for session in self.sessions:
+            length_per_no_trades_counter.setdefault(session["n_trades"], []).append(session["n_candles"])
+        for n_trades in sorted(length_per_no_trades_counter.keys()):
+            lengths = length_per_no_trades_counter[n_trades]
+            print(f"  {n_trades} trades: {len(lengths)} sess, "
+                  f"avg length: {int(sum(lengths) / len(lengths))} "
+                  f"min length: {int(min(lengths))} "
+                  f"max length: {int(max(lengths))}")
+
+        # Bollinger Band Width distribution across sessions
+        print("Bollinger Band Width distribution across sessions:")
+        bbw_per_no_trades_counter = {}
+        for session in self.sessions:
+            bbw_per_no_trades_counter.setdefault(session["n_trades"], []).append(session["bbw"])
+        for n_trades in sorted(bbw_per_no_trades_counter.keys()):
+            bbws = bbw_per_no_trades_counter[n_trades]
+            print(f"  {n_trades} trades: {len(bbws)} sess, "
+                  f"avg bbw: {sum(bbws) / len(bbws):.2f} "
+                  f"min bbw: {min(bbws):.2f} "
+                  f"max bbw: {max(bbws):.2f}")
 
         # Trade count distribution across sessions
         # print("Trade count distribution across sessions:")
@@ -407,6 +442,45 @@ class ChBreakoutTrader:
         )
 
         fig.show()
+
+
+class BBW:
+    """
+    Bollinger Band Width (BBW) indicator implementation.
+    BBW is calculated as (Upper Band - Lower Band) / Middle Band, where:
+    - Middle Band = Simple Moving Average (SMA) of the closing price over a specified window
+    - Upper Band = Middle Band + (k * Standard Deviation of closing price over the window)
+    - Lower Band = Middle Band - (k * Standard Deviation of closing price over the window
+    """
+    def __init__(self, window=20, k=2.0):
+        self.window = window
+        self.k = k
+        self.closes = deque(maxlen=window)
+        self.sum = 0.0
+        self.sumsq = 0.0
+
+    def update(self, ohcl: Ohcl):
+        c = ohcl.close
+        if len(self.closes) == self.window:
+            old = self.closes[0]
+            self.sum -= old
+            self.sumsq -= old * old
+
+        self.closes.append(c)
+        self.sum += c
+        self.sumsq += c * c
+
+        if len(self.closes) < self.window:
+            return None  # Not ready
+
+        mean = self.sum / self.window
+        var = self.sumsq / self.window - mean * mean
+        std = math.sqrt(max(var, 1e-12))
+
+        upper = mean + self.k * std
+        lower = mean - self.k * std
+
+        return (upper - lower) / mean  # BBW
 
 
 def run_experiment(timeseries, trader):
