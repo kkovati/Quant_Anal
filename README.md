@@ -1,4 +1,4 @@
-# Quantitaive Analysis 
+# Quantitative Analysis 
 
 This repository contains quantitative analysis codes for data preprocessing, statistical modeling, 
 and time-series analysis, providing flexible tools for making money. Maybe.
@@ -7,12 +7,12 @@ This repo is not documented at all. It is for personal use, but feel free to loo
 
 ## Future Plans
 
-**Monotonicity**
+**Monotonicity**\
 Find chart with highest monotonicity on arbitrary but preferably long time intervals.\
 Stock, crypto, commodity, currency, ETF, etc.\
 See: Quant_Anal\stat\monotonicity.py
 
-**Pattern Matching**  
+**Pattern Matching**\
 Cut out windows from charts. These intervals will be *patterns*.
 Window width can be as small as two candles.\
 Have a distance metric between these patterns.\
