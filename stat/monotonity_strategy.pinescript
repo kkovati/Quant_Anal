@@ -1,0 +1,100 @@
+//@version=5
+strategy(
+     title             = "Monotonicity Strategy",
+     shorttitle        = "MonoStrat",
+     overlay           = false,
+     pyramiding        = 0,
+     default_qty_type  = strategy.percent_of_equity,
+     default_qty_value = 100)
+
+// ── Inputs ─────────────────────────────────────────────────────────────────
+lookback = input.int(60,  title="Lookback Period", minval=1, step=1)
+tp_pct   = input.float(0.3, title="Take Profit %", minval=0.01, step=0.1)
+sl_pct   = input.float(0.2, title="Stop Loss %",   minval=0.01, step=0.1)
+
+// ── Monotonicity Index ─────────────────────────────────────────────────────
+float mono_index = na
+
+if bar_index >= lookback
+    int cnt = 0
+    for j = 1 to lookback
+        if close[j] < close
+            cnt += 1
+    mono_index := float(cnt) / lookback
+
+// ── State Machine ──────────────────────────────────────────────────────────
+//  0  →  idle: waiting for index to reach 0.0 or 1.0
+//  1  →  primed long:  saw 0.0, waiting for index to cross 0.5 upward
+// -1  →  primed short: saw 1.0, waiting for index to cross 0.5 downward
+//
+// A closed trade always resets state to 0.
+
+var int trade_state = 0
+
+// Detect the bar on which the position became flat
+bool trade_closed = strategy.position_size == 0 and strategy.position_size[1] != 0
+
+if trade_closed
+    trade_state := 0
+
+// Only update state while flat (no open position)
+if strategy.position_size == 0 and not na(mono_index)
+    if trade_state == 0
+        if mono_index <= 0.0
+            trade_state := 1
+        else if mono_index >= 1.0
+            trade_state := -1
+
+// ── Entry Conditions ───────────────────────────────────────────────────────
+bool long_entry  = trade_state == 1  and ta.crossover(mono_index,  0.5) and strategy.position_size == 0
+bool short_entry = trade_state == -1 and ta.crossunder(mono_index, 0.5) and strategy.position_size == 0
+
+if long_entry
+    strategy.entry("Long", strategy.long)
+    trade_state := 0   // reset; open position guards against re-entry
+
+if short_entry
+    strategy.entry("Short", strategy.short)
+    trade_state := 0
+
+// ── Exit Conditions (TP / SL) ──────────────────────────────────────────────
+if strategy.position_size > 0
+    strategy.exit("Long Exit", "Long",
+         limit = strategy.position_avg_price * (1 + tp_pct / 100),
+         stop  = strategy.position_avg_price * (1 - sl_pct / 100))
+
+if strategy.position_size < 0
+    strategy.exit("Short Exit", "Short",
+         limit = strategy.position_avg_price * (1 - tp_pct / 100),
+         stop  = strategy.position_avg_price * (1 + sl_pct / 100))
+
+// ── Visualisation ──────────────────────────────────────────────────────────
+hline(1.00, "1.00", color=color.new(#00FF88, 40), linestyle=hline.style_dashed, linewidth=1)
+hline(0.75, "0.75", color=color.new(#00FF88, 40), linestyle=hline.style_dotted, linewidth=1)
+hline(0.50, "0.50", color=color.new(color.white, 40), linestyle=hline.style_dashed, linewidth=1)
+hline(0.25, "0.25", color=color.new(#FF6666, 40), linestyle=hline.style_dotted, linewidth=1)
+hline(0.00, "0.00", color=color.new(#FF6666, 40), linestyle=hline.style_dashed, linewidth=1)
+
+p_mono    = plot(mono_index, title="Mono Index", color=color.new(#FFA500, 0), linewidth=2)
+p_neutral = plot(0.5,        title="_neutral",   display=display.none, editable=false)
+
+fill(p_mono, p_neutral,
+     color = not na(mono_index) and mono_index >= 0.5
+             ? color.new(#00FF88, 80)
+             : color.new(#FF4444, 80),
+     title = "Zone Fill")
+
+// Tiny markers showing the primed state (waiting for 0.5 cross)
+plotshape(trade_state == 1  and not na(mono_index),
+     title    = "Primed Long",
+     style    = shape.triangleup,
+     location = location.bottom,
+     color    = color.new(#00FF88, 40),
+     size     = size.tiny)
+
+plotshape(trade_state == -1 and not na(mono_index),
+     title    = "Primed Short",
+     style    = shape.triangledown,
+     location = location.top,
+     color    = color.new(#FF4444, 40),
+     size     = size.tiny)

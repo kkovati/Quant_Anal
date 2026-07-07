@@ -1,0 +1,49 @@
+//@version=5
+indicator(title="Monotonicity Index", shorttitle="MonoIdx", overlay=false)
+
+// ── Inputs ─────────────────────────────────────────────────────────────────
+fast_len = input.int(100, title="Fast Lookback",  minval=1)
+slow_len = input.int(200, title="Slow Lookback",  minval=1)
+
+// ── Calculation ────────────────────────────────────────────────────────────
+float fast_mono_index = na
+float slow_mono_index = na
+
+if bar_index >= fast_len
+    int cnt = 0
+    for j = 1 to fast_len
+        if close[j] < close
+            cnt += 1
+    fast_mono_index := float(cnt) / fast_len
+
+if bar_index >= slow_len
+    int cnt = 0
+    for j = 1 to slow_len
+        if close[j] < close
+            cnt += 1
+    slow_mono_index := float(cnt) / slow_len
+
+// ── Reference lines ────────────────────────────────────────────────────────
+hline(1.00, "1.00", color=color.new(#00FF88,     40), linestyle=hline.style_dashed, linewidth=1)
+hline(0.75, "0.75", color=color.new(#00FF88,     40), linestyle=hline.style_dotted, linewidth=1)
+hline(0.50, "0.50", color=color.new(color.white, 40), linestyle=hline.style_dashed, linewidth=1)
+hline(0.25, "0.25", color=color.new(#FF6666,     40), linestyle=hline.style_dotted, linewidth=1)
+hline(0.00, "0.00", color=color.new(#FF6666,     40), linestyle=hline.style_dashed, linewidth=1)
+
+// ── Zone fill ──────────────────────────────────────────────────────────────
+// Both bullish  → very green  (alpha 65)
+// Both bearish  → very red    (alpha 65)
+// Mixed         → faint green (alpha 90)
+bool fast_bull = not na(fast_mono_index) and fast_mono_index >= 0.5
+bool slow_bull = not na(slow_mono_index) and slow_mono_index >= 0.5
+
+color zone_color =
+     fast_bull     and slow_bull     ? color.new(#00FF88, 65) :
+     not fast_bull and not slow_bull ? color.new(#FF4444, 65) :
+     color.new(#00FF88, 90)
+
+bgcolor(zone_color, title="Zone Fill")
+
+// ── Plots ──────────────────────────────────────────────────────────────────
+plot(fast_mono_index, title="Fast Mono", color=color.new(#FFA500, 0), linewidth=1)
+plot(slow_mono_index, title="Slow Mono", color=color.new(#00BFFF, 0), linewidth=2)
