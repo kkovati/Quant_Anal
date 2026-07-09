@@ -8,6 +8,9 @@ Pipeline (repeated for several "cycles"):
    seed, so the whole sequence of cycles is reproducible.
 3. Search all parameters (lookback, tp_pct, sl_pct) with Optuna, driving the
    exact Backtrader engine, maximizing ROI on week1 only (in-sample).
+   tp_pct is always sampled higher than sl_pct, and any trial whose win rate
+   is above MAX_WIN_RATE_PCT is pruned so it can never become "best", even
+   if its ROI looks great.
 4. Re-run a single Backtrader backtest on week2 with those same best params,
    with no re-optimization, to get an out-of-sample ROI.
 5. After all cycles finish, print a summary table of every cycle's window,
@@ -24,6 +27,7 @@ import pandas as pd
 from data_mining.financial_data import get_financial_data
 
 RANDOM_SEED = 42
+MAX_WIN_RATE_PCT = 80.0  # trials whose win rate exceeds this are pruned (never "best")
 
 
 class MonotonicityStrategy(bt.Strategy):
@@ -182,17 +186,39 @@ def run_backtrader(df: pd.DataFrame, lookback: int, tp_pct: float, sl_pct: float
 
 
 def optuna_search(df: pd.DataFrame, n_trials: int = 30):
-    """Fine-tuned search over all parameters using Optuna, maximizing ROI."""
+    """
+    Fine-tuned search over all parameters using Optuna, maximizing ROI.
+
+    Two constraints are enforced directly in the objective, not just as a
+    post-hoc filter, so they hold for every trial Optuna considers:
+      - tp_pct is always sampled strictly higher than sl_pct (sl_pct is
+        drawn first, then tp_pct is drawn from (sl_pct, 2.0]).
+      - any trial whose win rate is above MAX_WIN_RATE_PCT is pruned via
+        `optuna.TrialPruned`, which excludes it from `study.best_*` -- so
+        the reported "best" is always the highest ROI *among* parameter
+        sets with win rate <= MAX_WIN_RATE_PCT, never a high-win-rate one.
+    """
 
     def objective(trial: optuna.Trial) -> float:
         lookback = trial.suggest_int("lookback", 10, 200, step=1)
-        tp_pct = trial.suggest_float("tp_pct", 0.05, 2.0)
-        sl_pct = trial.suggest_float("sl_pct", 0.05, 2.0)
-        return run_backtrader(df, lookback, tp_pct, sl_pct).roi
+        sl_pct = trial.suggest_float("sl_pct", 0.05, 1.9)
+        tp_pct = trial.suggest_float("tp_pct", sl_pct + 0.05, 2.0)
+
+        stats = run_backtrader(df, lookback, tp_pct, sl_pct)
+        if stats.win_rate > MAX_WIN_RATE_PCT:
+            raise optuna.TrialPruned()
+        return stats.roi
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        raise RuntimeError(
+            f"All {n_trials} trials had a win rate above {MAX_WIN_RATE_PCT:.0f}% "
+            "(none were valid) -- try increasing n_trials."
+        )
     return study.best_params, study.best_value
 
 
