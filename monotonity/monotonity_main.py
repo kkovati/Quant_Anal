@@ -1,24 +1,20 @@
 """
-Backtrader + vectorbt/Optuna proof-of-concept for the Monotonicity Strategy,
+Backtrader + Optuna proof-of-concept for the Monotonicity Strategy,
 converted from monotonity_strategy.pinescript.
 
 Pipeline:
 1. Load BTC-USD OHLCV data via data_mining/financial_data.py.
 2. Pick one random 7-day window, once, using a fixed seed (reused for every
    optimization run below).
-3. Coarse-search the `lookback` parameter with vectorbt (fast, vectorized
-   approximation of the strategy).
-4. Fine-search all parameters (lookback, tp_pct, sl_pct) with Optuna,
-   driving the exact Backtrader engine, maximizing ROI.
+3. Search all parameters (lookback, tp_pct, sl_pct) with Optuna, driving the
+   exact Backtrader engine, maximizing ROI.
 """
 import random
 from datetime import timedelta
 
 import backtrader as bt
-import numpy as np
 import optuna
 import pandas as pd
-import vectorbt as vbt
 
 from data_mining.financial_data import get_financial_data
 
@@ -138,99 +134,6 @@ def run_backtrader(df: pd.DataFrame, lookback: int, tp_pct: float, sl_pct: float
     return (end_cash - start_cash) / start_cash * 100.0
 
 
-def _compute_mono_index_series(close: pd.Series, lookback: int) -> pd.Series:
-    """Vectorized rolling monotonicity index (see MonotonicityStrategy docstring)."""
-    count = pd.Series(0.0, index=close.index)
-    for j in range(1, lookback + 1):
-        count = count.add((close.shift(j) < close).astype(float), fill_value=0.0)
-    mono_index = count / lookback
-    mono_index.iloc[:lookback] = np.nan
-    return mono_index
-
-
-def _simulate_signals(close: pd.Series, mono_index: pd.Series, tp_pct: float, sl_pct: float):
-    """
-    Stateful replication of the Pine state machine + a close-price
-    approximation of the TP/SL exit (used only so the state machine knows
-    when the position is "flat" again; the actual PnL/ROI is computed by
-    vbt.Portfolio.from_signals via tp_stop/sl_stop, which uses OHLC).
-    """
-    c = close.to_numpy()
-    m = mono_index.to_numpy()
-    n = len(c)
-    long_entries = np.zeros(n, dtype=bool)
-    short_entries = np.zeros(n, dtype=bool)
-
-    trade_state = 0
-    position = 0  # 0 flat, 1 long, -1 short
-    entry_price = np.nan
-    prev_mono = np.nan
-
-    for i in range(n):
-        cur_mono = m[i]
-        price = c[i]
-
-        if position == 1:
-            change = (price - entry_price) / entry_price * 100
-            if change >= tp_pct or change <= -sl_pct:
-                position = 0
-        elif position == -1:
-            change = (entry_price - price) / entry_price * 100
-            if change >= tp_pct or change <= -sl_pct:
-                position = 0
-
-        if position == 0 and not np.isnan(cur_mono):
-            if trade_state == 0:
-                if cur_mono <= 0.0:
-                    trade_state = 1
-                elif cur_mono >= 1.0:
-                    trade_state = -1
-
-            if not np.isnan(prev_mono):
-                crossover = prev_mono <= 0.5 < cur_mono
-                crossunder = prev_mono >= 0.5 > cur_mono
-                if trade_state == 1 and crossover:
-                    long_entries[i] = True
-                    trade_state = 0
-                    position = 1
-                    entry_price = price
-                elif trade_state == -1 and crossunder:
-                    short_entries[i] = True
-                    trade_state = 0
-                    position = -1
-                    entry_price = price
-
-        prev_mono = cur_mono
-
-    idx = close.index
-    return pd.Series(long_entries, index=idx), pd.Series(short_entries, index=idx)
-
-
-def vectorbt_search(df: pd.DataFrame, lookback_range, tp_pct: float = 0.3, sl_pct: float = 0.2):
-    """Coarse grid search over `lookback` using vectorbt (tp/sl held fixed)."""
-    close = df["close"]
-    best_roi, best_params = -np.inf, None
-    for lookback in lookback_range:
-        mono_index = _compute_mono_index_series(close, lookback)
-        long_entries, short_entries = _simulate_signals(close, mono_index, tp_pct, sl_pct)
-        if not (long_entries.any() or short_entries.any()):
-            continue
-        pf = vbt.Portfolio.from_signals(
-            close,
-            entries=long_entries,
-            exits=False,
-            short_entries=short_entries,
-            short_exits=False,
-            tp_stop=tp_pct / 100,
-            sl_stop=sl_pct / 100,
-            init_cash=10_000.0,
-        )
-        roi = pf.total_return() * 100.0
-        if roi > best_roi:
-            best_roi, best_params = roi, lookback
-    return best_params, best_roi
-
-
 def optuna_search(df: pd.DataFrame, n_trials: int = 30):
     """Fine-tuned search over all parameters using Optuna, maximizing ROI."""
 
@@ -240,8 +143,9 @@ def optuna_search(df: pd.DataFrame, n_trials: int = 30):
         sl_pct = trial.suggest_float("sl_pct", 0.05, 2.0)
         return run_backtrader(df, lookback, tp_pct, sl_pct)
 
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=n_trials)
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
     return study.best_params, study.best_value
 
 
@@ -252,10 +156,7 @@ def main():
     week_df = pick_random_week(df)
     print(f"Selected week: {week_df.index.min()} - {week_df.index.max()}")
 
-    vbt_lookback, vbt_roi = vectorbt_search(week_df, range(5, 60, 5))
-    print(f"vectorbt best lookback: {vbt_lookback}, ROI: {vbt_roi:.2f}%")
-
-    optuna_params, optuna_roi = optuna_search(week_df)
+    optuna_params, optuna_roi = optuna_search(week_df, n_trials=1000)
     print(f"Optuna best params: {optuna_params}, ROI: {optuna_roi:.2f}%")
 
 
