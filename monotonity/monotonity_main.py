@@ -42,9 +42,9 @@ LOOKBACK_MAX = 200
 
 # --- TP/SL search ranges (in %) -----------------------------------------------
 SL_PCT_MIN = 0.05
-SL_PCT_MAX = 1.9
+SL_PCT_MAX = 0.9
 TP_SL_MIN_MARGIN = 0.05  # tp_pct is always sampled at least this much above sl_pct
-TP_PCT_MAX = 2.0
+TP_PCT_MAX = 1.0
 
 # --- Period lengths (in hours) ------------------------------------------------
 # The mono index needs `lookback` bars of prior history before it produces its
@@ -53,8 +53,8 @@ TP_PCT_MAX = 2.0
 # This way the optimization/test periods themselves are never "wasted" on
 # warmup and can generate signals/trades right from their first bar.
 WARMUP_PERIOD_HOURS = LOOKBACK_MAX + 2
-OPTIMIZATION_PERIOD_HOURS = 7 * 24  # 1 week
-TEST_PERIOD_HOURS = 7 * 24  # 1 week, out-of-sample
+OPTIMIZATION_PERIOD_HOURS = 4 * 7 * 24  # in hours, in-sample
+TEST_PERIOD_HOURS = 4 * 7 * 24  # in hours, out-of-sample
 
 # --- Cycle / Optuna run sizes --------------------------------------------------
 N_CYCLES = 20
@@ -329,7 +329,7 @@ def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trial
 
     Returns a DataFrame with one row per cycle: start_date (optimization
     period start), end_date (test period end), best_params (dict), and the
-    week1_*/week2_* stats (week1 = optimization period, week2 = test period).
+    optim_*/test_* stats (optim = optimization period, test = test period).
     """
     df = _ensure_datetime_index(df)
     rng = random.Random(RANDOM_SEED)
@@ -340,35 +340,35 @@ def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trial
         warmup_bars = len(warmup)
         print(f"\n=== Cycle {i + 1}/{n_cycles}: optimizing on {optimization.index.min()} - {optimization.index.max()} ===")
 
-        opt_data = pd.concat([warmup, optimization])
+        optim_data = pd.concat([warmup, optimization])
         test_data = pd.concat([warmup, optimization, test])
 
-        best_params, _ = optuna_search(opt_data, n_trials=n_trials, warmup_bars=warmup_bars)
-        week1_stats = run_backtrader(opt_data, **best_params, warmup_bars=warmup_bars)
-        week2_stats = run_backtrader(test_data, **best_params, warmup_bars=warmup_bars + len(optimization))
+        best_params, _ = optuna_search(optim_data, n_trials=n_trials, warmup_bars=warmup_bars)
+        optim_stats = run_backtrader(optim_data, **best_params, warmup_bars=warmup_bars)
+        test_stats = run_backtrader(test_data, **best_params, warmup_bars=warmup_bars + len(optimization))
 
         print(
             f"Best params: {best_params}\n"
-            f"  Week1 (in-sample):     ROI {week1_stats.roi:6.2f}% | "
-            f"win rate {week1_stats.win_rate:5.1f}% ({week1_stats.num_trades} trades) | "
-            f"Sharpe {week1_stats.sharpe:.2f}\n"
-            f"  Week2 (out-of-sample): ROI {week2_stats.roi:6.2f}% | "
-            f"win rate {week2_stats.win_rate:5.1f}% ({week2_stats.num_trades} trades) | "
-            f"Sharpe {week2_stats.sharpe:.2f}"
+            f"  Optim: ROI {optim_stats.roi:6.2f}% | "
+            f"win rate {optim_stats.win_rate:5.1f}% ({optim_stats.num_trades} trades) | "
+            f"Sharpe {optim_stats.sharpe:.2f}\n"
+            f"  Test:  ROI {test_stats.roi:6.2f}% | "
+            f"win rate {test_stats.win_rate:5.1f}% ({test_stats.num_trades} trades) | "
+            f"Sharpe {test_stats.sharpe:.2f}"
         )
 
         rows.append({
             "start_date": optimization.index.min(),
             "end_date": test.index.max(),
             "best_params": best_params,
-            "week1_roi": week1_stats.roi,
-            "week1_win_rate": week1_stats.win_rate,
-            "week1_trades": week1_stats.num_trades,
-            "week1_sharpe": week1_stats.sharpe,
-            "week2_roi": week2_stats.roi,
-            "week2_win_rate": week2_stats.win_rate,
-            "week2_trades": week2_stats.num_trades,
-            "week2_sharpe": week2_stats.sharpe,
+            "optim_roi": optim_stats.roi,
+            "optim_win_rate": optim_stats.win_rate,
+            "optim_trades": optim_stats.num_trades,
+            "optim_sharpe": optim_stats.sharpe,
+            "test_roi": test_stats.roi,
+            "test_win_rate": test_stats.win_rate,
+            "test_trades": test_stats.num_trades,
+            "test_sharpe": test_stats.sharpe,
         })
 
     return pd.DataFrame(rows)
@@ -392,18 +392,18 @@ def print_results_table(results: pd.DataFrame) -> None:
         "start_date": results["start_date"],
         "end_date": results["end_date"],
         "best_params": results["best_params"].apply(_format_params),
-        "week1_roi_%": results["week1_roi"].map(lambda v: f"{v:.2f}"),
-        "week1_win_rate": [
-            _format_win_rate(wr, n) for wr, n in zip(results["week1_win_rate"], results["week1_trades"])
+        "optim_roi_%": results["optim_roi"].map(lambda v: f"{v:.2f}"),
+        "optim_win_rate": [
+            _format_win_rate(wr, n) for wr, n in zip(results["optim_win_rate"], results["optim_trades"])
         ],
-        "week1_sharpe": results["week1_sharpe"].map(_format_sharpe),
-        "week2_roi_%": results["week2_roi"].map(lambda v: f"{v:.2f}"),
-        "week2_win_rate": [
-            _format_win_rate(wr, n) for wr, n in zip(results["week2_win_rate"], results["week2_trades"])
+        "optim_sharpe": results["optim_sharpe"].map(_format_sharpe),
+        "test_roi_%": results["test_roi"].map(lambda v: f"{v:.2f}"),
+        "test_win_rate": [
+            _format_win_rate(wr, n) for wr, n in zip(results["test_win_rate"], results["test_trades"])
         ],
-        "week2_sharpe": results["week2_sharpe"].map(_format_sharpe),
+        "test_sharpe": results["test_sharpe"].map(_format_sharpe),
     })
-    print("\n=== Optimize (week1) / Out-of-sample test (week2) results ===")
+    print("\n=== Optimize / Test results ===")
     print(table.to_string(index=False))
 
 
