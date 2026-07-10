@@ -4,15 +4,21 @@ converted from monotonity_strategy.pinescript.
 
 Pipeline (repeated for several "cycles"):
 1. Load BTC-USD OHLCV data via data_mining/financial_data.py.
-2. Pick two consecutive random 7-day windows (week1, week2) using a fixed
-   seed, so the whole sequence of cycles is reproducible.
-3. Search all parameters (lookback, tp_pct, sl_pct) with Optuna, driving the
-   exact Backtrader engine, maximizing ROI on week1 only (in-sample).
+2. Pick three consecutive periods using a fixed seed (warmup, optimization,
+   test), so the whole sequence of cycles is reproducible. `warmup` is long
+   enough to cover the mono index's largest possible lookback.
+3. Search all parameters (lookback, tp_pct, sl_pct) with Optuna, running
+   Backtrader over pd.concat([warmup, optimization]) with warmup_bars set so
+   the mono index/state machine is primed during `warmup` but no trades are
+   opened (and no stats collected) until `optimization` starts, maximizing
+   ROI over that in-sample window only.
    tp_pct is always sampled higher than sl_pct, and any trial whose win rate
    is above MAX_WIN_RATE_PCT is pruned so it can never become "best", even
    if its ROI looks great.
-4. Re-run a single Backtrader backtest on week2 with those same best params,
-   with no re-optimization, to get an out-of-sample ROI.
+4. Re-run a single Backtrader backtest over pd.concat([warmup, optimization,
+   test]) with those same best params (no re-optimization) and warmup_bars
+   covering warmup+optimization, so trading/stats are scoped to `test` only,
+   giving an out-of-sample ROI.
 5. After all cycles finish, print a summary table of every cycle's window,
    best params, and both ROIs.
 """
@@ -29,6 +35,30 @@ from data_mining.financial_data import get_financial_data
 RANDOM_SEED = 42
 MAX_WIN_RATE_PCT = 80.0  # trials whose win rate exceeds this are pruned (never "best")
 MIN_TRADES = 5  # trials with fewer closed trades than this are pruned (never "best")
+
+# --- Monotonicity index lookback search range --------------------------------
+LOOKBACK_MIN = 10
+LOOKBACK_MAX = 200
+
+# --- TP/SL search ranges (in %) -----------------------------------------------
+SL_PCT_MIN = 0.05
+SL_PCT_MAX = 1.9
+TP_SL_MIN_MARGIN = 0.05  # tp_pct is always sampled at least this much above sl_pct
+TP_PCT_MAX = 2.0
+
+# --- Period lengths (in hours) ------------------------------------------------
+# The mono index needs `lookback` bars of prior history before it produces its
+# first value, so a dedicated warmup period (long enough for the *largest*
+# lookback Optuna can try) is placed right before the optimization period.
+# This way the optimization/test periods themselves are never "wasted" on
+# warmup and can generate signals/trades right from their first bar.
+WARMUP_PERIOD_HOURS = LOOKBACK_MAX + 2
+OPTIMIZATION_PERIOD_HOURS = 7 * 24  # 1 week
+TEST_PERIOD_HOURS = 7 * 24  # 1 week, out-of-sample
+
+# --- Cycle / Optuna run sizes --------------------------------------------------
+N_CYCLES = 20
+N_TRIALS = 1000
 
 
 class MonotonicityStrategy(bt.Strategy):
@@ -49,12 +79,20 @@ class MonotonicityStrategy(bt.Strategy):
 
     Exit is a fixed TP/SL bracket set at the entry price (mirrors
     strategy.exit(..., limit=avg_price*(1±tp_pct), stop=avg_price*(1∓sl_pct))).
+
+    `warmup_bars`: the strategy keeps computing the mono index and updating
+    the trade_state machine on every bar (so it's fully "warmed up" by the
+    time it matters), but it won't open any *new* trades while
+    len(self.data) <= warmup_bars. This lets a caller feed in extra leading
+    history purely to prime the indicator/state without that history's bars
+    contributing any trades to the resulting stats.
     """
 
     params = dict(
         lookback=60,
         tp_pct=0.3,
         sl_pct=0.2,
+        warmup_bars=0,
     )
 
     def __init__(self):
@@ -95,6 +133,12 @@ class MonotonicityStrategy(bt.Strategy):
 
         crossover = self._prev_mono_index <= 0.5 < self._mono_index
         crossunder = self._prev_mono_index >= 0.5 > self._mono_index
+
+        # Still within the warmup window: keep the state machine ticking
+        # over (above) so it's primed correctly, but don't act on it yet.
+        if len(self.data) <= self.p.warmup_bars:
+            return
+
         price = self.data.close[0]
 
         if self.trade_state == 1 and crossover:
@@ -121,26 +165,40 @@ def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     return df.sort_index()
 
 
-def pick_random_two_weeks(df: pd.DataFrame, rng: random.Random) -> tuple[pd.DataFrame, pd.DataFrame]:
+def pick_random_periods(df: pd.DataFrame, rng: random.Random) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Pick two consecutive, non-overlapping random 7-day windows from `df`.
+    Pick three consecutive, non-overlapping, plain segments from `df`:
+
+        [warmup][optimization][test]
+
+    Callers are responsible for actually using `warmup` to prime the mono
+    index/state machine (see MonotonicityStrategy's `warmup_bars` param):
+      - to optimize: run on pd.concat([warmup, optimization]) with
+        warmup_bars=len(warmup), so trading is only allowed once the
+        `optimization` segment starts.
+      - to test: run on pd.concat([warmup, optimization, test]) with
+        warmup_bars=len(warmup) + len(optimization), so trading is only
+        allowed once the `test` segment starts.
 
     `df` must already have a sorted DatetimeIndex (see `_ensure_datetime_index`).
     `rng` is a `random.Random` instance owned by the caller: reusing the same
     instance across repeated calls advances its internal state so each call
-    returns a *different* pair of weeks, while re-creating `rng` from
+    returns a *different* triple of periods, while re-creating `rng` from
     RANDOM_SEED reproduces the exact same sequence of picks every run.
     """
+    total_hours = WARMUP_PERIOD_HOURS + OPTIMIZATION_PERIOD_HOURS + TEST_PERIOD_HOURS
     min_date = df.index.min()
-    max_date = df.index.max() - timedelta(days=14)
-    random_days = rng.randint(0, (max_date - min_date).days)
-    start = min_date + timedelta(days=random_days)
-    mid = start + timedelta(days=7)
-    end = mid + timedelta(days=7)
+    max_date = df.index.max() - timedelta(hours=total_hours)
+    random_hours = rng.randint(0, int((max_date - min_date).total_seconds() // 3600))
+    warmup_start = min_date + timedelta(hours=random_hours)
+    opt_start = warmup_start + timedelta(hours=WARMUP_PERIOD_HOURS)
+    test_start = opt_start + timedelta(hours=OPTIMIZATION_PERIOD_HOURS)
+    test_end = test_start + timedelta(hours=TEST_PERIOD_HOURS)
 
-    week1 = df[(df.index >= start) & (df.index < mid)]
-    week2 = df[(df.index >= mid) & (df.index < end)]
-    return week1, week2
+    warmup = df[(df.index >= warmup_start) & (df.index < opt_start)]
+    optimization = df[(df.index >= opt_start) & (df.index < test_start)]
+    test = df[(df.index >= test_start) & (df.index < test_end)]
+    return warmup, optimization, test
 
 
 @dataclass
@@ -152,11 +210,22 @@ class BacktestStats:
     sharpe: float          # daily, non-annualized Sharpe ratio; NaN if not computable
 
 
-def run_backtrader(df: pd.DataFrame, lookback: int, tp_pct: float, sl_pct: float) -> BacktestStats:
-    """Run one Backtrader backtest, return ROI/win-rate/Sharpe stats."""
+def run_backtrader(
+    df: pd.DataFrame, lookback: int, tp_pct: float, sl_pct: float, warmup_bars: int = 0
+) -> BacktestStats:
+    """Run one Backtrader backtest, return ROI/win-rate/Sharpe stats.
+
+    `df` may include leading history purely to warm up the mono index/state
+    machine: pass `warmup_bars=len(that leading history)` so the strategy
+    still processes it bar-by-bar (priming its indicator/state) but won't
+    open any trades until past it, keeping ROI/win_rate/num_trades/sharpe
+    scoped to the bars after the warmup.
+    """
     cerebro = bt.Cerebro()
     cerebro.adddata(bt.feeds.PandasData(dataname=df))
-    cerebro.addstrategy(MonotonicityStrategy, lookback=lookback, tp_pct=tp_pct, sl_pct=sl_pct)
+    cerebro.addstrategy(
+        MonotonicityStrategy, lookback=lookback, tp_pct=tp_pct, sl_pct=sl_pct, warmup_bars=warmup_bars
+    )
     # Pine's default_qty_type=strategy.percent_of_equity, default_qty_value=100.
     # 99% leaves a small cash buffer so orders aren't rejected on rounding.
     cerebro.addsizer(bt.sizers.PercentSizer, percents=99)
@@ -186,9 +255,12 @@ def run_backtrader(df: pd.DataFrame, lookback: int, tp_pct: float, sl_pct: float
     return BacktestStats(roi=roi, win_rate=win_rate, num_trades=num_trades, sharpe=sharpe)
 
 
-def optuna_search(df: pd.DataFrame, n_trials: int = 30):
+def optuna_search(df: pd.DataFrame, n_trials: int = 30, warmup_bars: int = 0):
     """
     Fine-tuned search over all parameters using Optuna, maximizing ROI.
+
+    `df` may include leading warmup history; see `run_backtrader`'s
+    `warmup_bars` docstring -- it's passed straight through here.
 
     Two constraints are enforced directly in the objective, not just as a
     post-hoc filter, so they hold for every trial Optuna considers:
@@ -203,11 +275,11 @@ def optuna_search(df: pd.DataFrame, n_trials: int = 30):
     """
 
     def objective(trial: optuna.Trial) -> float:
-        lookback = trial.suggest_int("lookback", 10, 200, step=1)
-        sl_pct = trial.suggest_float("sl_pct", 0.05, 1.9)
-        tp_pct = trial.suggest_float("tp_pct", sl_pct + 0.05, 2.0)
+        lookback = trial.suggest_int("lookback", LOOKBACK_MIN, LOOKBACK_MAX, step=1)
+        sl_pct = trial.suggest_float("sl_pct", SL_PCT_MIN, SL_PCT_MAX)
+        tp_pct = trial.suggest_float("tp_pct", sl_pct + TP_SL_MIN_MARGIN, TP_PCT_MAX)
 
-        stats = run_backtrader(df, lookback, tp_pct, sl_pct)
+        stats = run_backtrader(df, lookback, tp_pct, sl_pct, warmup_bars=warmup_bars)
         if stats.win_rate > MAX_WIN_RATE_PCT:
             raise optuna.TrialPruned()
         if stats.num_trades < MIN_TRADES:
@@ -235,32 +307,45 @@ def _format_params(params: dict) -> str:
     )
 
 
-def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = 5, n_trials: int = 300) -> pd.DataFrame:
+def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trials: int = N_TRIALS) -> pd.DataFrame:
     """
-    Repeat the "pick 2 weeks -> optimize on week1 -> test on week2" cycle
-    `n_cycles` times and collect the results.
+    Repeat the "pick warmup/optimization/test periods -> optimize -> test"
+    cycle `n_cycles` times and collect the results.
 
     Each cycle:
-      1. Picks two consecutive random 7-day windows (week1, week2).
-      2. Runs the Optuna search on week1 (in-sample) -> best_params.
-      3. Re-runs a single Backtrader backtest on week1 *and* on week2 with
-         those best_params (no re-optimization) to collect full stats
-         (roi, win_rate, num_trades, sharpe) for both, in- and out-of-sample.
+      1. Picks a warmup period, an optimization period, and a test period,
+         all consecutive and non-overlapping (see `pick_random_periods`).
+      2. Runs the Optuna search on pd.concat([warmup, optimization]), with
+         warmup_bars=len(warmup) so the mono index/state machine is primed
+         over the warmup bars but no trades open until the optimization
+         segment starts -> best_params.
+      3. Re-runs a single Backtrader backtest on that same
+         warmup+optimization data (warmup_bars=len(warmup)) *and* on
+         pd.concat([warmup, optimization, test]) (warmup_bars=len(warmup) +
+         len(optimization), so trading is only allowed once the `test`
+         segment starts) with those best_params (no re-optimization) to
+         collect full stats (roi, win_rate, num_trades, sharpe) for both,
+         in- and out-of-sample.
 
-    Returns a DataFrame with one row per cycle: start_date (week1 start),
-    end_date (week2 end), best_params (dict), and the week1_*/week2_* stats.
+    Returns a DataFrame with one row per cycle: start_date (optimization
+    period start), end_date (test period end), best_params (dict), and the
+    week1_*/week2_* stats (week1 = optimization period, week2 = test period).
     """
     df = _ensure_datetime_index(df)
     rng = random.Random(RANDOM_SEED)
 
     rows = []
     for i in range(n_cycles):
-        week1, week2 = pick_random_two_weeks(df, rng)
-        print(f"\n=== Cycle {i + 1}/{n_cycles}: optimizing on {week1.index.min()} - {week1.index.max()} ===")
+        warmup, optimization, test = pick_random_periods(df, rng)
+        warmup_bars = len(warmup)
+        print(f"\n=== Cycle {i + 1}/{n_cycles}: optimizing on {optimization.index.min()} - {optimization.index.max()} ===")
 
-        best_params, _ = optuna_search(week1, n_trials=n_trials)
-        week1_stats = run_backtrader(week1, **best_params)
-        week2_stats = run_backtrader(week2, **best_params)
+        opt_data = pd.concat([warmup, optimization])
+        test_data = pd.concat([warmup, optimization, test])
+
+        best_params, _ = optuna_search(opt_data, n_trials=n_trials, warmup_bars=warmup_bars)
+        week1_stats = run_backtrader(opt_data, **best_params, warmup_bars=warmup_bars)
+        week2_stats = run_backtrader(test_data, **best_params, warmup_bars=warmup_bars + len(optimization))
 
         print(
             f"Best params: {best_params}\n"
@@ -273,8 +358,8 @@ def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = 5, n_trials: int 
         )
 
         rows.append({
-            "start_date": week1.index.min(),
-            "end_date": week2.index.max(),
+            "start_date": optimization.index.min(),
+            "end_date": test.index.max(),
             "best_params": best_params,
             "week1_roi": week1_stats.roi,
             "week1_win_rate": week1_stats.win_rate,
@@ -323,10 +408,10 @@ def print_results_table(results: pd.DataFrame) -> None:
 
 
 def main():
-    df = get_financial_data(ticker='BTC-USD', days=60, interval='hourly')
+    df = get_financial_data(ticker='BTC-USD', days=730, interval='hourly')
     df.columns = [str(c).lower() for c in df.columns]
 
-    results = run_optimize_test_cycles(df, n_cycles=20, n_trials=1000)
+    results = run_optimize_test_cycles(df, n_cycles=N_CYCLES, n_trials=N_TRIALS)
     print_results_table(results)
 
 
