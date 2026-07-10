@@ -28,6 +28,7 @@ from data_mining.financial_data import get_financial_data
 
 RANDOM_SEED = 42
 MAX_WIN_RATE_PCT = 80.0  # trials whose win rate exceeds this are pruned (never "best")
+MIN_TRADES = 5  # trials with fewer closed trades than this are pruned (never "best")
 
 
 class MonotonicityStrategy(bt.Strategy):
@@ -193,10 +194,12 @@ def optuna_search(df: pd.DataFrame, n_trials: int = 30):
     post-hoc filter, so they hold for every trial Optuna considers:
       - tp_pct is always sampled strictly higher than sl_pct (sl_pct is
         drawn first, then tp_pct is drawn from (sl_pct, 2.0]).
-      - any trial whose win rate is above MAX_WIN_RATE_PCT is pruned via
+      - any trial whose win rate is above MAX_WIN_RATE_PCT, or whose number
+        of closed trades is below MIN_TRADES, is pruned via
         `optuna.TrialPruned`, which excludes it from `study.best_*` -- so
         the reported "best" is always the highest ROI *among* parameter
-        sets with win rate <= MAX_WIN_RATE_PCT, never a high-win-rate one.
+        sets with win rate <= MAX_WIN_RATE_PCT and at least MIN_TRADES
+        closed trades, never a high-win-rate or low-sample-size one.
     """
 
     def objective(trial: optuna.Trial) -> float:
@@ -207,6 +210,8 @@ def optuna_search(df: pd.DataFrame, n_trials: int = 30):
         stats = run_backtrader(df, lookback, tp_pct, sl_pct)
         if stats.win_rate > MAX_WIN_RATE_PCT:
             raise optuna.TrialPruned()
+        if stats.num_trades < MIN_TRADES:
+            raise optuna.TrialPruned()
         return stats.roi
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -216,8 +221,8 @@ def optuna_search(df: pd.DataFrame, n_trials: int = 30):
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
     if not completed:
         raise RuntimeError(
-            f"All {n_trials} trials had a win rate above {MAX_WIN_RATE_PCT:.0f}% "
-            "(none were valid) -- try increasing n_trials."
+            f"All {n_trials} trials were pruned (win rate above {MAX_WIN_RATE_PCT:.0f}% "
+            f"or fewer than {MIN_TRADES} closed trades) -- try increasing n_trials."
         )
     return study.best_params, study.best_value
 
