@@ -55,6 +55,10 @@ coverage.xml
 *.mo
 *.pot
 
+# Trading backtest results (per-run generated folders/plots)
+monotonity/results/
+results/
+
 # Django stuff:
 *.log
 local_settings.py

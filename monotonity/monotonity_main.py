@@ -22,15 +22,21 @@ Pipeline (repeated for several "cycles"):
 5. After all cycles finish, print a summary table of every cycle's window,
    best params, and both ROIs.
 """
+import os
 import random
-from dataclasses import dataclass
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import timedelta, datetime
 
 import backtrader as bt
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import optuna
 import pandas as pd
 
 from data_mining.financial_data import get_financial_data
+
+matplotlib.use("Agg")  # headless rendering for saving PNGs
 
 RANDOM_SEED = 42
 MAX_WIN_RATE_PCT = 80.0  # trials whose win rate exceeds this are pruned (never "best")
@@ -59,6 +65,11 @@ TEST_PERIOD_HOURS = 4 * 7 * 24  # in hours, out-of-sample
 # --- Cycle / Optuna run sizes --------------------------------------------------
 N_CYCLES = 20
 N_TRIALS = 1000
+
+# --- Trade plot capture ---------------------------------------------------------
+PRE_TRADE_BARS = 10   # bars of OHLC/mono-index history to include before entry
+POST_TRADE_BARS = 10  # bars of OHLC/mono-index history to include after exit
+RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 
 
 class MonotonicityStrategy(bt.Strategy):
@@ -101,10 +112,38 @@ class MonotonicityStrategy(bt.Strategy):
         self._prev_mono_index = None
         self.order = None  # tracks the pending/active entry bracket
 
+        # Full per-bar mono-index history (1 entry per `next()` call, in the
+        # same order/indexing as the data feed itself), so trade plots can
+        # later slice out OHLC + mono-index around any trade's bar range.
+        self.mono_index_history: list[float | None] = []
+
+        # Per-trade capture: entry bar index (1-based, matching len(self.data)
+        # at the time the position was opened) keyed by trade.ref, and the
+        # list of completed trades' info dicts.
+        self._trade_entry_bars: dict[int, int] = {}
+        self.trades_info: list[dict] = []
+
     def notify_order(self, order):
         if order.status in (order.Completed, order.Canceled, order.Margin, order.Rejected):
             if order == self.order:
                 self.order = None
+
+    def notify_trade(self, trade):
+        if trade.justopened:
+            self._trade_entry_bars[trade.ref] = len(self.data)
+        if trade.isclosed:
+            entry_bar = self._trade_entry_bars.pop(trade.ref, None)
+            exit_bar = len(self.data)
+            entry_value = abs(trade.value) or 1.0
+            pnl_pct = trade.pnlcomm / entry_value * 100.0
+            self.trades_info.append({
+                "index": len(self.trades_info) + 1,
+                "entry_bar": entry_bar,
+                "exit_bar": exit_bar,
+                "direction": "long" if trade.long else "short",
+                "win": trade.pnlcomm > 0,
+                "pnl_pct": pnl_pct,
+            })
 
     def _compute_mono_index(self):
         lookback = self.p.lookback
@@ -117,6 +156,7 @@ class MonotonicityStrategy(bt.Strategy):
     def next(self):
         self._prev_mono_index = self._mono_index
         self._mono_index = self._compute_mono_index()
+        self.mono_index_history.append(self._mono_index)
 
         # Pine only updates the state machine / looks for entries while flat.
         if self.position or self.order or self._mono_index is None:
@@ -208,6 +248,8 @@ class BacktestStats:
     win_rate: float      # % of *closed* trades that were winners; NaN if none closed
     num_trades: int       # number of closed trades (the win_rate denominator)
     sharpe: float          # daily, non-annualized Sharpe ratio; NaN if not computable
+    trades_info: list = field(default_factory=list)         # per-trade dicts (entry/exit bar, direction, win, pnl_pct)
+    mono_index_history: list = field(default_factory=list)  # mono-index value per bar (same indexing as `df`)
 
 
 def run_backtrader(
@@ -252,7 +294,10 @@ def run_backtrader(
     if sharpe is None:
         sharpe = float("nan")
 
-    return BacktestStats(roi=roi, win_rate=win_rate, num_trades=num_trades, sharpe=sharpe)
+    return BacktestStats(
+        roi=roi, win_rate=win_rate, num_trades=num_trades, sharpe=sharpe,
+        trades_info=list(strat.trades_info), mono_index_history=list(strat.mono_index_history),
+    )
 
 
 def optuna_search(df: pd.DataFrame, n_trials: int = 30, warmup_bars: int = 0):
@@ -307,7 +352,9 @@ def _format_params(params: dict) -> str:
     )
 
 
-def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trials: int = N_TRIALS) -> pd.DataFrame:
+def run_optimize_test_cycles(
+    df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trials: int = N_TRIALS, run_dir: str | None = None
+) -> pd.DataFrame:
     """
     Repeat the "pick warmup/optimization/test periods -> optimize -> test"
     cycle `n_cycles` times and collect the results.
@@ -330,6 +377,11 @@ def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trial
     Returns a DataFrame with one row per cycle: start_date (optimization
     period start), end_date (test period end), best_params (dict), and the
     optim_*/test_* stats (optim = optimization period, test = test period).
+
+    If `run_dir` is given, a `Cycle {i+1}` subfolder is created inside it for
+    every cycle, and a PNG (price + monotonicity-index) is saved for every
+    closed trade (both from the optimization and the test period), named
+    `<optim|test>_{trade_index}_<win|lose>_<long|short>_<pnl>percent.png`.
     """
     df = _ensure_datetime_index(df)
     rng = random.Random(RANDOM_SEED)
@@ -357,6 +409,15 @@ def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trial
             f"Sharpe {test_stats.sharpe:.2f}"
         )
 
+        if run_dir is not None:
+            cycle_dir = os.path.join(run_dir, f"Cycle {i + 1}")
+            save_all_trade_plots(
+                optim_data, optim_stats, cycle_dir, PRE_TRADE_BARS, POST_TRADE_BARS, file_prefix="optim_"
+            )
+            save_all_trade_plots(
+                test_data, test_stats, cycle_dir, PRE_TRADE_BARS, POST_TRADE_BARS, file_prefix="test_"
+            )
+
         rows.append({
             "start_date": optimization.index.min(),
             "end_date": test.index.max(),
@@ -372,6 +433,117 @@ def run_optimize_test_cycles(df: pd.DataFrame, n_cycles: int = N_CYCLES, n_trial
         })
 
     return pd.DataFrame(rows)
+
+
+def _sanitize_filename(name: str) -> str:
+    """Strip characters that aren't safe in filenames."""
+    return "".join(c if c.isalnum() or c in ("_", "-", ".") else "_" for c in name)
+
+
+def save_trade_plot(
+    df: pd.DataFrame,
+    mono_index_history: list,
+    trade: dict,
+    pre_bars: int,
+    post_bars: int,
+    out_dir: str,
+    file_prefix: str = "",
+) -> None:
+    """
+    Render and save a two-panel (price + monotonicity index) chart for one
+    trade, in the same dark-themed style as monotonity_index.py, covering
+    `pre_bars` bars before entry through `post_bars` bars after exit.
+
+    `df` is the exact DataFrame the strategy ran on (1-based bar indices in
+    `trade` correspond 1:1 to `df.iloc[bar - 1]`). `mono_index_history` is
+    the per-bar mono-index list captured from the strategy (same indexing,
+    0-based, i.e. `mono_index_history[bar - 1]`).
+    """
+    entry_bar = trade["entry_bar"]
+    exit_bar = trade["exit_bar"]
+    if entry_bar is None or exit_bar is None:
+        return
+
+    start_idx = max(0, entry_bar - 1 - pre_bars)
+    end_idx = min(len(df), exit_bar + post_bars)  # exclusive upper bound
+
+    ohlc_slice = df.iloc[start_idx:end_idx]
+    mono_slice = np.array(
+        [mono_index_history[i] if i < len(mono_index_history) else np.nan for i in range(start_idx, end_idx)],
+        dtype=float,
+    )
+    x = np.arange(len(ohlc_slice))
+    entry_x = (entry_bar - 1) - start_idx
+    exit_x = (exit_bar - 1) - start_idx
+
+    close = ohlc_slice["close"].to_numpy()
+
+    win_lose = "win" if trade["win"] else "lose"
+    direction = trade["direction"]
+    trade_idx = trade.get("index")
+    pnl_pct = trade["pnl_pct"]
+
+    plt.style.use('dark_background')
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(14, 9),
+                                    gridspec_kw={'height_ratios': [1, 1]})
+    fig.suptitle(
+        f"Monotonicity Analysis - Trade #{trade_idx} | {direction.upper()} | "
+        f"{win_lose.upper()} | PnL {pnl_pct:+.2f}% | entry bar {entry_bar} -> exit bar {exit_bar}",
+        fontsize=13, fontweight='bold', color='white',
+    )
+
+    # --- Price subplot ---
+    ax1.plot(x, close, label='Price', color='#00BFFF', linewidth=1.2)
+    ax1.axvline(entry_x, color='#00FF88', linestyle='--', linewidth=1.2, label='Entry')
+    ax1.axvline(exit_x, color='#FF4444', linestyle='--', linewidth=1.2, label='Exit')
+    ax1.set_title('Price', color='white')
+    ax1.set_ylabel('Price', color='white')
+    ax1.legend(facecolor='#222222', edgecolor='gray')
+    ax1.grid(True, which='major', color='#444444', linestyle='-', linewidth=0.8, alpha=0.9)
+    ax1.grid(True, which='minor', color='#333333', linestyle='--', linewidth=0.5, alpha=0.6)
+    ax1.minorticks_on()
+    ax1.set_facecolor('#111111')
+    ax1.tick_params(colors='white')
+    for spine in ax1.spines.values():
+        spine.set_edgecolor('#555555')
+
+    # --- Monotonicity subplot ---
+    ax2.plot(x, mono_slice, label='Monotonicity Index', color='#FFA500', linewidth=1.4)
+    ax2.axhline(0.5, color='white', linestyle='--', linewidth=0.8, alpha=0.6, label='Neutral (0.5)')
+    ax2.axhline(0.75, color='#00FF88', linestyle=':', linewidth=0.8, alpha=0.6, label='Strong up (0.75)')
+    ax2.axhline(0.25, color='#FF6666', linestyle=':', linewidth=0.8, alpha=0.6, label='Strong down (0.25)')
+    ax2.axvline(entry_x, color='#00FF88', linestyle='--', linewidth=1.2, label='Entry')
+    ax2.axvline(exit_x, color='#FF4444', linestyle='--', linewidth=1.2, label='Exit')
+    ax2.fill_between(x, mono_slice, 0.5, where=(mono_slice >= 0.5), alpha=0.15, color='#00FF88')
+    ax2.fill_between(x, mono_slice, 0.5, where=(mono_slice < 0.5), alpha=0.15, color='#FF4444')
+    ax2.set_title('Monotonicity Index', color='white')
+    ax2.set_ylabel('Index Value', color='white')
+    ax2.set_xlabel('Bar', color='white')
+    ax2.set_ylim(0, 1)
+    ax2.legend(facecolor='#222222', edgecolor='gray', ncol=2, fontsize=8)
+    ax2.grid(True, which='major', color='#444444', linestyle='-', linewidth=0.8, alpha=0.9)
+    ax2.grid(True, which='minor', color='#333333', linestyle='--', linewidth=0.5, alpha=0.6)
+    ax2.minorticks_on()
+    ax2.set_facecolor('#111111')
+    ax2.tick_params(colors='white')
+    for spine in ax2.spines.values():
+        spine.set_edgecolor('#555555')
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    pnl_str = f"{trade['pnl_pct']:.2f}".replace("-", "neg").replace(".", "p")
+    filename = _sanitize_filename(f"{file_prefix}{trade_idx}_{win_lose}_{direction}_{pnl_str}percent.png")
+    fig.savefig(os.path.join(out_dir, filename), dpi=120, facecolor=fig.get_facecolor())
+    plt.close(fig)
+
+
+def save_all_trade_plots(
+    df: pd.DataFrame, stats: BacktestStats, out_dir: str, pre_bars: int, post_bars: int, file_prefix: str = ""
+) -> None:
+    """Save a trade plot for every closed trade recorded in `stats`."""
+    for trade in stats.trades_info:
+        save_trade_plot(df, stats.mono_index_history, trade, pre_bars, post_bars, out_dir, file_prefix=file_prefix)
 
 
 def _format_win_rate(win_rate: float, num_trades: int) -> str:
@@ -411,7 +583,12 @@ def main():
     df = get_financial_data(ticker='BTC-USD', days=730, interval='hourly')
     df.columns = [str(c).lower() for c in df.columns]
 
-    results = run_optimize_test_cycles(df, n_cycles=N_CYCLES, n_trials=N_TRIALS)
+    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = os.path.join(RESULTS_DIR, run_id)
+    os.makedirs(run_dir, exist_ok=True)
+    print(f"Saving results to: {run_dir}")
+
+    results = run_optimize_test_cycles(df, n_cycles=N_CYCLES, n_trials=N_TRIALS, run_dir=run_dir)
     print_results_table(results)
 
 
